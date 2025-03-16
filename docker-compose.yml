@@ -2,7 +2,7 @@ version: '3.1'
 
 services:
   core-api:
-   image: ghcr.io/programador-tv/dev-core-api
+  #  image: ghcr.io/programador-tv/dev-core-api
    container_name: core-api
    restart: always
    ports:
@@ -12,7 +12,7 @@ services:
     dockerfile: ./WebApi/dockerfile.aspnet
 
   core-websocket:
-   image: ghcr.io/programador-tv/dev-core-websocket
+  #  image: ghcr.io/programador-tv/dev-core-websocket
    container_name: core-websocket
    restart: always
    ports:
@@ -22,17 +22,9 @@ services:
     dockerfile: ./WebSocket/dockerfile.aspnet
 
   core-background:
-   image: ghcr.io/programador-tv/dev-core-background
+  #  image: ghcr.io/programador-tv/dev-core-background
    container_name: core-background
    restart: always
    build:
     context: ./src/
     dockerfile: ./Background/dockerfile.aspnet
-
-  core-background-live:
-   image: ghcr.io/programador-tv/dev-core-background-live
-   container_name: core-background-live
-   restart: always
-   build:
-    context: ./src/
-    dockerfile: ./Background.Live/dockerfile.aspnet
