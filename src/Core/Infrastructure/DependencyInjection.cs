@@ -1,9 +1,4 @@
-﻿using Domain.Interfaces.Repositories;
-using Domain.Repositories;
-using Domain.WebServices;
-using Infrastructure.Browser;
-using Infrastructure.Contexts;
-using Infrastructure.FileHandling;
+﻿using Infrastructure.Contexts;
 // using Infrastructure.Redis;
 using Infrastructure.Repositories;
 using Infrastructure.WebServices;
@@ -130,20 +125,20 @@ public static class DependencyInjection
 
     public static IServiceCollection AddHelpers(this IServiceCollection services)
     {
-        services.AddScoped<ISaveFile, SaveFile>();
-        services.AddScoped<IEmailHandling, EmailHandling>();
+        // services.AddScoped<ISaveFile, SaveFile>();
+        // services.AddScoped<IEmailHandling, EmailHandling>();
         return services;
     }
 
     public static IServiceCollection AddStreamingUtils(this IServiceCollection services)
     {
-        services.AddSingleton<IVideoHandling, VideoHandlingSingleton>();
+        // services.AddSingleton<IVideoHandling, VideoHandlingSingleton>();
         return services;
     }
 
     public static IServiceCollection AddBrowserUtils(this IServiceCollection services)
     {
-        services.AddScoped<IBrowserHandler, BrowserHandler>();
+        // services.AddScoped<IBrowserHandler, BrowserHandler>();
         return services;
     }
 

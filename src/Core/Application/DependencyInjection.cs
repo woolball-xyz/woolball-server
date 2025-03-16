@@ -13,18 +13,7 @@ public static class DependencyInjection
 
         // services.AddValidatorsFromAssembly(assembly);
 
-        services.AddScoped<IPerfilBusinessLogic, PerfilBusinessLogic>();
-        services.AddScoped<INotificationBusinessLogic, NotificationBusinessLogic>();
-        services.AddScoped<IPerfilBusinessLogic, PerfilBusinessLogic>();
-        services.AddScoped<ILiveBusinessLogic, LiveBusinessLogic>();
-        services.AddScoped<ITimeSelectionBusinessLogic, TimeSelectionBusinessLogic>();
-        services.AddScoped<IJoinTimeBusinessLogic, JoinTimeBusinessLogic>();
-        services.AddScoped<IHelpBackstageBusinessLogic, HelpBackstageBusinessLogic>();
-        services.AddScoped<ICommentBusinessLogic, CommentBusinessLogic>();
-        // services.AddScoped<IChatBusinessLogic, ChatBusinessLogic>();
-        services.AddScoped<IFollowBusinessLogic, FollowBusinessLogic>();
-        services.AddScoped<ILikeBusinessLogic, LikeBusinessLogic>();
-        services.AddScoped<IHelpResponseBusinessLogic, HelpResponseBusinessLogic>();
+        services.AddScoped<ITemplateBusinessLogic, TemplateBusinessLogic>();
         return services;
     }
 }

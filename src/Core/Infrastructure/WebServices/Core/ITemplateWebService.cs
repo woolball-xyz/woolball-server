@@ -1,8 +1,8 @@
 using Domain.Contracts;
 
-namespace Domain.WebServices;
+namespace Infrastructure.WebServices;
 
-public interface TemplateWebService
+public interface ITemplateWebService
 {
 
 }

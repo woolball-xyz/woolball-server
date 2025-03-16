@@ -14,6 +14,6 @@ var app = builder.Build();
 
 app.UseWebSockets();
 
-app.TemplateSockets();
+app.AddTemplateSockets();
 
 app.Run();

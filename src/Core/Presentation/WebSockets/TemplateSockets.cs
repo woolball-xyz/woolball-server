@@ -16,64 +16,16 @@ public static class TemplateSockets
 {
     public static void AddTemplateSockets(this IEndpointRouteBuilder app)
     {
-        var group = app.MapGroup("ws/live");
+        var group = app.MapGroup("ws/");
 
         group.WithOpenApi();
 
-        group.Map("thumb/{id}", ProcessaThumbnail);
-        group.Map("transmit/{id}", ProcessaVideo);
+        group.Map("{id}", ReceiveAsync);
     }
 
-    public static async Task<IResult> ProcessaVideo(
-        HttpContext context,
-        IMessagePublisher publisher,
-        string id
-    )
-    {
-        if (string.IsNullOrEmpty(id))
-        {
-            return Results.NotFound();
-        }
 
-        var webSocket = await context.WebSockets.AcceptWebSocketAsync();
 
-        try
-        {
-            WebSocketReceiveResult result;
-            do
-            {
-                var buffer = new byte[1024 * 50];
-                using var memoryStream = new MemoryStream();
-                do
-                {
-                    result = await webSocket.ReceiveAsync(
-                        new ArraySegment<byte>(buffer),
-                        CancellationToken.None
-                    );
-                    await memoryStream.WriteAsync(buffer.AsMemory(0, result.Count));
-                } while (!result.EndOfMessage);
-
-                memoryStream.Seek(0, SeekOrigin.Begin);
-
-                var content = new LiveChunkMessage(id, memoryStream.ToArray());
-
-                await publisher.PublishAsync("LiveStreamingQueue", content);
-                Console.WriteLine("send video chunk {0}", id.ToString());
-            } while (!result.CloseStatus.HasValue);
-        }
-        catch (WebSocketException)
-        {
-            await webSocket.CloseAsync(
-                WebSocketCloseStatus.InternalServerError,
-                "WebSocket error occurred.",
-                CancellationToken.None
-            );
-        }
-
-        return Results.Ok();
-    }
-
-    public static async Task<IResult> ProcessaThumbnail(
+    public static async Task<IResult> ReceiveAsync(
         HttpContext context,
         IMessagePublisher publisher,
         string id

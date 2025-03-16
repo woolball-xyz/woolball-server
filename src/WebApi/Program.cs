@@ -7,26 +7,12 @@ using Presentation;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Add service defaults & Aspire components.
-// builder.AddServiceDefaults();
-// builder.Services.AddProblemDetails();
-
-CultureInfo culture = CultureInfo.CreateSpecificCulture("pt-BR");
-CultureInfo.DefaultThreadCurrentCulture = culture;
-CultureInfo.DefaultThreadCurrentUICulture = culture;
-
-builder
-    .Services.AddLogs(builder.Configuration)
+builder.Services
     .AddDatabase(builder.Configuration)
     .AddRepositories()
-    .AddHelpers()
     .AddApplication()
-    .AddQueuing(builder.Configuration, consumers: false)
-    .AddOpenaiWebServices(builder.Configuration)
-    .AddBocaSujaWebServices(builder.Configuration)
-    .AddSpecificTimeZone()
-    .AddSentry(builder.Configuration, builder.WebHost)
-    .AddAppInsigths(builder.Configuration);
+    .AddSpecificTimeZone();
+
 
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
