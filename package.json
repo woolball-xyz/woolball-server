@@ -1,0 +1,9 @@
+{
+  "devDependencies": {
+    "husky": "^9.1.4"
+  },
+  "scripts": {
+    "prepare": "husky",
+    "format": "dotnet csharpier ."
+  }
+}

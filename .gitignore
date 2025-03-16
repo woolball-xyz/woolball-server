@@ -1,0 +1,8 @@
+/.vscode
+**/bin
+**/obj
+/.vs
+/src/WebApi/WebApi.csproj.user
+
+**/appsettings.json
+**/.env.prod
