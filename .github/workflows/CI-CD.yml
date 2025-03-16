@@ -41,65 +41,65 @@ jobs:
       run: dotnet build --configuration Release /p:RunAnalyzersDuringBuild=true
   
   
-  code_quality:
-    needs: code_format
-    name: SonarCloud scan
-    runs-on: windows-latest
-    env:
-      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-    steps:
+  # code_quality:
+  #   needs: code_format
+  #   name: SonarCloud scan
+  #   runs-on: windows-latest
+  #   env:
+  #     SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+  #     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  #   steps:
 
-      - name: Cache .NET packages
-        uses: actions/cache@v3
-        with:
-          path: ~/.nuget/packages
-          key: ${{ runner.os }}-nuget
-          restore-keys: |
-            ${{ runner.os }}-nuget
+  #     - name: Cache .NET packages
+  #       uses: actions/cache@v3
+  #       with:
+  #         path: ~/.nuget/packages
+  #         key: ${{ runner.os }}-nuget
+  #         restore-keys: |
+  #           ${{ runner.os }}-nuget
 
-      - name: Set up .NET
-        uses: actions/setup-dotnet@v1
-        with:
-          dotnet-version: 8.x.x
+  #     - name: Set up .NET
+  #       uses: actions/setup-dotnet@v1
+  #       with:
+  #         dotnet-version: 8.x.x
       
-      - name: Set up JDK 17
-        uses: actions/setup-java@v3
-        with:
-          java-version: 17
-          distribution: 'zulu' # Alternative distribution options are available.
-      - uses: actions/checkout@v3
-        with:
-          fetch-depth: 0  # Shallow clones should be disabled for a better relevancy of analysis
-      - name: Cache SonarCloud packages
-        uses: actions/cache@v3
-        with:
-          path: ~\sonar\cache
-          key: ${{ runner.os }}-sonar
-          restore-keys: ${{ runner.os }}-sonar
-      - name: Cache SonarCloud scanner
-        id: cache-sonar-scanner
-        uses: actions/cache@v3
-        with:
-          path: .\.sonar\scanner
-          key: ${{ runner.os }}-sonar-scanner
-          restore-keys: ${{ runner.os }}-sonar-scanner
-      - name: Install SonarCloud scanner
-        if: steps.cache-sonar-scanner.outputs.cache-hit != 'true'
-        shell: powershell
-        run: |
-          New-Item -Path .\.sonar\scanner -ItemType Directory
-          dotnet tool update dotnet-sonarscanner --tool-path .\.sonar\scanner
-      - name: Build and analyze
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}  # Needed to get PR information, if any
-          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-        shell: powershell
-        run: |
-          .\.sonar\scanner\dotnet-sonarscanner begin /k:"programador-tv_monorepo2" /o:"programador-tv" /d:sonar.token="${{ secrets.SONAR_TOKEN }}" /d:sonar.host.url="https://sonarcloud.io" /d:sonar.cs.opencover.reportsPaths="**/coverage.opencover.xml"
-          dotnet build
-          dotnet test --no-build /p:CollectCoverage=true /p:CoverletOutputFormat=opencover
-           .\.sonar\scanner\dotnet-sonarscanner end /d:sonar.login="${{ secrets.SONAR_TOKEN }}"
+  #     - name: Set up JDK 17
+  #       uses: actions/setup-java@v3
+  #       with:
+  #         java-version: 17
+  #         distribution: 'zulu' # Alternative distribution options are available.
+  #     - uses: actions/checkout@v3
+  #       with:
+  #         fetch-depth: 0  # Shallow clones should be disabled for a better relevancy of analysis
+  #     - name: Cache SonarCloud packages
+  #       uses: actions/cache@v3
+  #       with:
+  #         path: ~\sonar\cache
+  #         key: ${{ runner.os }}-sonar
+  #         restore-keys: ${{ runner.os }}-sonar
+  #     - name: Cache SonarCloud scanner
+  #       id: cache-sonar-scanner
+  #       uses: actions/cache@v3
+  #       with:
+  #         path: .\.sonar\scanner
+  #         key: ${{ runner.os }}-sonar-scanner
+  #         restore-keys: ${{ runner.os }}-sonar-scanner
+  #     - name: Install SonarCloud scanner
+  #       if: steps.cache-sonar-scanner.outputs.cache-hit != 'true'
+  #       shell: powershell
+  #       run: |
+  #         New-Item -Path .\.sonar\scanner -ItemType Directory
+  #         dotnet tool update dotnet-sonarscanner --tool-path .\.sonar\scanner
+  #     - name: Build and analyze
+  #       env:
+  #         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}  # Needed to get PR information, if any
+  #         SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+  #       shell: powershell
+  #       run: |
+  #         .\.sonar\scanner\dotnet-sonarscanner begin /k:"programador-tv_monorepo2" /o:"programador-tv" /d:sonar.token="${{ secrets.SONAR_TOKEN }}" /d:sonar.host.url="https://sonarcloud.io" /d:sonar.cs.opencover.reportsPaths="**/coverage.opencover.xml"
+  #         dotnet build
+  #         dotnet test --no-build /p:CollectCoverage=true /p:CoverletOutputFormat=opencover
+  #          .\.sonar\scanner\dotnet-sonarscanner end /d:sonar.login="${{ secrets.SONAR_TOKEN }}"
 
   publish_api:
     name: Deploy Core.WebAPI
@@ -107,18 +107,15 @@ jobs:
     needs: [code_format]
     steps:
     - uses: actions/checkout@v3
-    - name: Login to GitHub Container Registry
-      uses: docker/login-action@v1 
-      with:
-        registry: ghcr.io
-        username: ${{ github.actor }}
-        password: ${{ secrets.GHCR_TOKEN }}
+    # - name: Login to GitHub Container Registry
+    #   uses: docker/login-action@v1 
+    #   with:
+    #     registry: ghcr.io
+    #     username: ${{ github.actor }}
+    #     password: ${{ secrets.GHCR_TOKEN }}
     - name: Build and push Docker image
       run: |
          if [ ${{ github.ref }} = 'refs/heads/main' ]; then
-           docker compose -f docker-compose.prod.yml build core-api
-           docker compose -f docker-compose.prod.yml push core-api
-         elif [ ${{ github.ref }} = 'refs/heads/develop' ]; then
           docker compose -f docker-compose.yml build core-api
           docker compose -f docker-compose.yml push core-api
          else  
@@ -131,18 +128,15 @@ jobs:
     needs: [code_format]
     steps:
     - uses: actions/checkout@v3
-    - name: Login to GitHub Container Registry
-      uses: docker/login-action@v1 
-      with:
-        registry: ghcr.io
-        username: ${{ github.actor }}
-        password: ${{ secrets.GHCR_TOKEN }}
+    # - name: Login to GitHub Container Registry
+    #   uses: docker/login-action@v1 
+    #   with:
+    #     registry: ghcr.io
+    #     username: ${{ github.actor }}
+    #     password: ${{ secrets.GHCR_TOKEN }}
     - name: Build and push Docker image
       run: |
          if [ ${{ github.ref }} = 'refs/heads/main' ]; then
-           docker compose -f docker-compose.prod.yml build core-websocket
-           docker compose -f docker-compose.prod.yml push core-websocket
-         elif [ ${{ github.ref }} = 'refs/heads/develop' ]; then
           docker compose -f docker-compose.yml build core-websocket
           docker compose -f docker-compose.yml push core-websocket
          else  
@@ -155,117 +149,19 @@ jobs:
     needs: [code_format]
     steps:
     - uses: actions/checkout@v3
-    - name: Login to GitHub Container Registry
-      uses: docker/login-action@v1 
-      with:
-        registry: ghcr.io
-        username: ${{ github.actor }}
-        password: ${{ secrets.GHCR_TOKEN }}
+    # - name: Login to GitHub Container Registry
+    #   uses: docker/login-action@v1 
+    #   with:
+    #     registry: ghcr.io
+    #     username: ${{ github.actor }}
+    #     password: ${{ secrets.GHCR_TOKEN }}
     - name: Build and push Docker image
       run: |
          if [ ${{ github.ref }} = 'refs/heads/main' ]; then
-           docker compose -f docker-compose.prod.yml build core-background
-           docker compose -f docker-compose.prod.yml push core-background
-         elif [ ${{ github.ref }} = 'refs/heads/develop' ]; then
           docker compose -f docker-compose.yml build core-background
           docker compose -f docker-compose.yml push core-background
          else  
           docker compose -f docker-compose.yml build core-background
          fi
          
-  publish_background_live:
-    name: Deploy Core.Background.Live
-    runs-on: ubuntu-latest
-    needs: [code_format]
-    steps:
-    - uses: actions/checkout@v3
-    - name: Login to GitHub Container Registry
-      uses: docker/login-action@v1 
-      with:
-        registry: ghcr.io
-        username: ${{ github.actor }}
-        password: ${{ secrets.GHCR_TOKEN }}
-    - name: Build and push Docker image
-      run: |
-         if [ ${{ github.ref }} = 'refs/heads/main' ]; then
-           docker compose -f docker-compose.prod.yml build core-background-live
-           docker compose -f docker-compose.prod.yml push core-background-live
-         elif [ ${{ github.ref }} = 'refs/heads/develop' ]; then
-          docker compose -f docker-compose.yml build core-background-live
-          docker compose -f docker-compose.yml push core-background-live
-         else  
-          docker compose -f docker-compose.yml build core-background-live
-         fi     
-         
-  publish_background_browser:
-    name: Deploy Core.Background.Browser
-    runs-on: ubuntu-latest
-    needs: [code_format]
-    steps:
-    - uses: actions/checkout@v3
-    - name: Login to GitHub Container Registry
-      uses: docker/login-action@v1 
-      with:
-        registry: ghcr.io
-        username: ${{ github.actor }}
-        password: ${{ secrets.GHCR_TOKEN }}
-    - name: Build and push Docker image
-      run: |
-         if [ ${{ github.ref }} = 'refs/heads/main' ]; then
-           docker compose -f docker-compose.prod.yml build core-background-browser
-           docker compose -f docker-compose.prod.yml push core-background-browser
-         elif [ ${{ github.ref }} = 'refs/heads/develop' ]; then
-          docker compose -f docker-compose.yml build core-background-browser
-          docker compose -f docker-compose.yml push core-background-browser
-         else  
-          docker compose -f docker-compose.yml build core-background-browser
-         fi     
-
-  publish_rtmp_live:
-    name: Deploy Core.RTMP.Live
-    runs-on: ubuntu-latest
-    needs: [code_format]
-    steps:
-    - uses: actions/checkout@v3
-    - name: Login to GitHub Container Registry
-      uses: docker/login-action@v1 
-      with:
-        registry: ghcr.io
-        username: ${{ github.actor }}
-        password: ${{ secrets.GHCR_TOKEN }}
-    - name: Build and push Docker image
-      run: |
-         if [ ${{ github.ref }} = 'refs/heads/main' ]; then
-           docker compose -f docker-compose.prod.yml build core-rtmp-live
-           docker compose -f docker-compose.prod.yml push core-rtmp-live
-         elif [ ${{ github.ref }} = 'refs/heads/develop' ]; then
-          docker compose -f docker-compose.yml build core-rtmp-live
-          docker compose -f docker-compose.yml push core-rtmp-live
-         else  
-          docker compose -f docker-compose.yml build core-rtmp-live
-         fi   
-
-  publish_app_platform:
-    name: Deploy Core.APP.Platform
-    runs-on: ubuntu-latest
-    needs: [code_format]
-    steps:
-    - uses: actions/checkout@v3
-    - name: Login to GitHub Container Registry
-      uses: docker/login-action@v1 
-      with:
-        registry: ghcr.io
-        username: ${{ github.actor }}
-        password: ${{ secrets.GHCR_TOKEN }}
-    - name: Build and push Docker image
-      run: |
-         if [ ${{ github.ref }} = 'refs/heads/main' ]; then
-           docker compose -f docker-compose.prod.yml build platform
-           docker compose -f docker-compose.prod.yml push platform
-         elif [ ${{ github.ref }} = 'refs/heads/develop' ]; then
-          docker compose -f docker-compose.yml build platform
-          docker compose -f docker-compose.yml push platform
-         else  
-          docker compose -f docker-compose.yml build platform
-         fi   
 
