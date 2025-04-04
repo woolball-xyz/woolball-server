@@ -18,7 +18,7 @@ public sealed class TemplateWorker(IServiceScopeFactory serviceScopeFactory) : B
             {
                 using var scope = serviceScopeFactory.CreateScope();
                 // do anything each 5 minutes
-              
+
                 await Task.Delay(EXECUTION_INTERVAL, stoppingToken);
             }
             catch (Exception e)

@@ -8,18 +8,19 @@ using Microsoft.AspNetCore.Routing;
 
 namespace Presentation.EndPoints;
 
-public static class TemplateEndPoints
+public static class HealthCheckEndPoints
 {
-    public static void AddTemplateEndPoints(this IEndpointRouteBuilder app)
+    public static void AddHealthCheckEndPoints(this IEndpointRouteBuilder app)
     {
         var group = app.MapGroup("api/v1/health-check");
 
         group.WithOpenApi();
 
-        group.MapGet(string.Empty, healthCheck);
+        group.MapGet(string.Empty, HealthCheck).RequireRateLimiting("fixed");
+        ;
     }
 
-    public static async Task<IResult> healthCheck()
+    public static async Task<IResult> HealthCheck()
     {
         return Results.Ok();
     }

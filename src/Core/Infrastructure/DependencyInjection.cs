@@ -99,7 +99,6 @@ public static class DependencyInjection
         services.AddScoped<CoreClient>();
 
         services.AddScoped<ITemplateWebService, TemplateWebService>();
-       
 
         return services;
     }
@@ -145,7 +144,7 @@ public static class DependencyInjection
     public static IServiceCollection AddRepositories(this IServiceCollection services)
     {
         services.AddScoped<ITemplateRepository, TemplateRepository>();
-      
+
         return services;
     }
 }

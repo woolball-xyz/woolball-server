@@ -8,12 +8,13 @@ builder
     .Services.AddWebServices(builder.Configuration)
     .AddQueuing(builder.Configuration, consumers: false)
     .AddSentry(builder.Configuration, builder.WebHost)
-    .AddAppInsigths(builder.Configuration);
+    .AddAppInsigths(builder.Configuration)
+    .AddWebSocketPool(builder.Configuration);
 
 var app = builder.Build();
 
 app.UseWebSockets();
 
-app.AddTemplateSockets();
+app.AddTaskSockets(); // presentation
 
 app.Run();

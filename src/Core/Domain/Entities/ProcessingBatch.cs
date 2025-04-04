@@ -1,0 +1,16 @@
+using System.ComponentModel.DataAnnotations;
+
+public class ProcessingBatch
+{
+    [Key]
+    public Guid Id { get; set; }
+    public Guid ApplicationUserId { get; set; }
+    public ApplicationUser ApplicationUser { get; set; }
+    public decimal CharactersProcessed { get; set; }
+    public decimal RatePerCharacter { get; set; }
+    public decimal AmountEarned { get; set; }
+    public DateTime ProcessedAt { get; set; }
+    public string Due { get; set; }
+    public bool IsPaid { get; set; }
+    public bool IsBonus { get; set; }
+}

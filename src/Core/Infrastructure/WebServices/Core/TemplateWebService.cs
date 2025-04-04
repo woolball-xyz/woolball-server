@@ -16,5 +16,4 @@ public sealed class TemplateWebService(CoreClient client) : ITemplateWebService
     //     var route = Path.Combine(baseRoute, string.Empty);
     //     return await client.GetAsync<string>(route);
     // }
-
 }

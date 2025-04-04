@@ -10,6 +10,11 @@ services:
    build:
     context: ./src/
     dockerfile: ./WebApi/dockerfile.aspnet
+   depends_on:
+    - sqlserver
+    - redis
+   networks:
+    - app-network
 
   core-websocket:
   #  image: ghcr.io/programador-tv/dev-core-websocket
@@ -20,6 +25,11 @@ services:
    build:
     context: ./src/
     dockerfile: ./WebSocket/dockerfile.aspnet
+   depends_on:
+    - sqlserver
+    - redis
+   networks:
+    - app-network
 
   core-background:
   #  image: ghcr.io/programador-tv/dev-core-background
@@ -28,3 +38,41 @@ services:
    build:
     context: ./src/
     dockerfile: ./Background/dockerfile.aspnet
+   depends_on:
+    - sqlserver
+    - redis
+   networks:
+    - app-network
+
+  sqlserver:
+   image: mcr.microsoft.com/mssql/server:2022-latest
+   container_name: sqlserver
+   restart: always
+   environment:
+    - ACCEPT_EULA=Y
+    - MSSQL_SA_PASSWORD=StrongPassword123!
+    - MSSQL_PID=Developer
+   volumes:
+    - sqlserver-data:/var/opt/mssql
+   networks:
+    - app-network
+
+  redis:
+   image: redis:alpine
+   container_name: redis
+   restart: always
+   command: redis-server --requirepass StrongRedisPassword123!
+   volumes:
+    - redis-data:/data
+   networks:
+    - app-network
+
+networks:
+  app-network:
+    driver: bridge
+
+volumes:
+  sqlserver-data:
+  redis-data:
+
+

@@ -8,13 +8,14 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
+using Microsoft.Extensions.DependencyInjection;
 using Queue;
 
 namespace Presentation.Websockets;
 
-public static class TemplateSockets
+public static class TaskSockets
 {
-    public static void AddTemplateSockets(this IEndpointRouteBuilder app)
+    public static void AddTaskSockets(this IEndpointRouteBuilder app)
     {
         var group = app.MapGroup("ws/");
 
@@ -23,11 +24,11 @@ public static class TemplateSockets
         group.Map("{id}", ReceiveAsync);
     }
 
-
-
     public static async Task<IResult> ReceiveAsync(
         HttpContext context,
         IMessagePublisher publisher,
+        WebSocketNodesQueue webSocketNodesQueue,
+        WebSocketMessageSender messageSender,
         string id
     )
     {
@@ -37,7 +38,10 @@ public static class TemplateSockets
         }
 
         var webSocket = await context.WebSockets.AcceptWebSocketAsync();
-
+        
+        // Adicionar o WebSocket ao gerenciador de conexões
+        await webSocketNodesQueue.AddWebsocketInQueueAsync(id, webSocket);
+        
         var buffer = new byte[1024];
         WebSocketReceiveResult result;
 
@@ -55,9 +59,12 @@ public static class TemplateSockets
                     data += Encoding.UTF8.GetString(buffer, 0, result.Count);
                 } while (!result.EndOfMessage);
 
-                // new message received in data
-
-           
+                // Processar a mensagem recebida
+                if (!string.IsNullOrEmpty(data))
+                {
+                    // Publicar a mensagem recebida para processamento
+                    await publisher.PublishAsync("message_received", new { ClientId = id, Message = data });
+                }
             } while (!result.CloseStatus.HasValue);
         }
         catch (WebSocketException)
@@ -67,6 +74,11 @@ public static class TemplateSockets
                 "WebSocket error occurred.",
                 CancellationToken.None
             );
+        }
+        finally
+        {
+            // Remover o WebSocket do gerenciador de conexões quando a conexão for fechada
+            await connectionManager.RemoveSocket(id);
         }
 
         return Results.Ok();

@@ -41,7 +41,6 @@ public static class DependencyInjection
             ?? configuration["Settings:ENVIROMENT"]
             ?? "Local";
 
-        
         if (env != "Production")
         {
             Log.Information("telemetry skiped in non-production enviroments");
@@ -62,7 +61,6 @@ public static class DependencyInjection
             Environment.GetEnvironmentVariable("ENVIROMENT")
             ?? configuration["Settings:ENVIROMENT"]
             ?? "Local";
-
 
         if (env != "Production")
         {
@@ -203,7 +201,9 @@ public static class DependencyInjection
 
     public static IEndpointRouteBuilder AddEndPoints(this IEndpointRouteBuilder app)
     {
-        app.AddTemplateEndPoints();
+        app.AddHealthCheckEndPoints();
+        app.AddModelsEndPoints();
+        app.AddTasksEndPoints();
 
         return app;
     }
