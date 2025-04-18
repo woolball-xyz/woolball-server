@@ -19,7 +19,7 @@ public sealed class SessionTrackQueue(IServiceScopeFactory serviceScopeFactory) 
                 IConnectionMultiplexer redis =
                     scope.ServiceProvider.GetRequiredService<IConnectionMultiplexer>();
                 var subscriber = redis.GetSubscriber();
-                var consumer = await subscriber.SubscribeAsync("sesion_tracking_queue");
+                var consumer = await subscriber.SubscribeAsync(RedisChannel.Literal("sesion_tracking_queue"));
 
                 consumer.OnMessage(message => { });
 

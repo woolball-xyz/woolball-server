@@ -20,7 +20,7 @@ public static class HealthCheckEndPoints
         ;
     }
 
-    public static async Task<IResult> HealthCheck()
+    public static IResult HealthCheck()
     {
         return Results.Ok();
     }

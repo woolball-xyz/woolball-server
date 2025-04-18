@@ -103,6 +103,7 @@ public static class TasksEndPoints
         }
         catch (Exception e)
         {
+            Console.WriteLine(e);
             context.Response.StatusCode = 500;
             await context.Response.WriteAsync(
                 JsonSerializer.Serialize(new { error = "internal error" })

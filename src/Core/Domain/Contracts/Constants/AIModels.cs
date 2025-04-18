@@ -2,8 +2,8 @@ namespace Contracts.Constants;
 
 public class BaseModel
 {
-    public string Model { get; set; }
-    public string Dtype { get; set; }
+    public required string Model { get; set; }
+    public required string Dtype { get; set; }
 }
 
 public static class AvailableModels

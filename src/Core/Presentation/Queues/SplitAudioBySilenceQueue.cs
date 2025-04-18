@@ -41,7 +41,7 @@ public sealed class SplitAudioBySilenceQueue(IServiceScopeFactory serviceScopeFa
 
         var subscriber = redis.GetSubscriber();
 
-        var consumer = await subscriber.SubscribeAsync("split_audio_by_silence_queue");
+        var consumer = await subscriber.SubscribeAsync(RedisChannel.Literal("split_audio_by_silence_queue"));
 
         consumer.OnMessage(
             async (message) =>
@@ -52,7 +52,7 @@ public sealed class SplitAudioBySilenceQueue(IServiceScopeFactory serviceScopeFa
                 }
                 catch (Exception e)
                 {
-                    //emit error
+                    //emit error!!!
                     Console.WriteLine($"Error in preprocessing queue: {e.Message}");
                 }
             }
@@ -67,12 +67,13 @@ public sealed class SplitAudioBySilenceQueue(IServiceScopeFactory serviceScopeFa
 
         var db = redis.GetDatabase();
 
-        var request = System.Text.Json.JsonSerializer.Deserialize<TaskRequest>(message);
+        string? messageStr = message.ToString();
+        var request = messageStr != null ? System.Text.Json.JsonSerializer.Deserialize<TaskRequest>(messageStr) : null;
         if (request == null)
             return;
 
-        var filePath = request.Kwargs["input"].ToString();
-        var extension = Path.GetExtension(filePath);
+        var filePath = request.Kwargs["input"].ToString() ?? throw new Exception("Invalid input");
+        var extension = Path.GetExtension(filePath) ?? "";
 
         using var fileStream = new FileStream(filePath, FileMode.Open, FileAccess.Read);
 

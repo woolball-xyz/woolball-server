@@ -8,7 +8,7 @@ public class SystemTransaction
     public Guid Id { get; set; } = Guid.NewGuid();
 
     public Guid ApplicationUserId { get; set; }
-    public ApplicationUser ApplicationUser { get; set; }
+    public required ApplicationUser ApplicationUser { get; set; }
     public TransactionType TransactionType { get; set; }
     public decimal CharactersProcessed { get; set; }
     public decimal RatePerCharacter { get; set; }

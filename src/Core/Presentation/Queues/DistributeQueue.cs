@@ -89,6 +89,6 @@ public sealed class DistributeQueue : BackgroundService
 
 public class WebSocketMessage
 {
-    public string TargetId { get; set; }
-    public string Content { get; set; }
+    public required string TargetId { get; set; }
+    public required string Content { get; set; }
 }

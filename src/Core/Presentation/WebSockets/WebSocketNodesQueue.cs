@@ -22,5 +22,5 @@ public class WebSocketNodesQueue
         return item;
     }
 
-    public async Task RemoveClientAsync(string nodeId) { }
+    public Task RemoveClientAsync(string nodeId) { return Task.CompletedTask; }
 }

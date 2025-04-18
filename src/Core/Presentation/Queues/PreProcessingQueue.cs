@@ -21,14 +21,13 @@ public sealed class PreProcessingQueue(IServiceScopeFactory serviceScopeFactory)
                     scope.ServiceProvider.GetRequiredService<IConnectionMultiplexer>();
 
                 var subscriber = redis.GetSubscriber();
-                var consumer = await subscriber.SubscribeAsync("preprocessing_queue");
+                var consumer = await subscriber.SubscribeAsync(RedisChannel.Literal("preprocessing_queue"));
 
                 consumer.OnMessage(message =>
                 {
                     var logic = scope.ServiceProvider.GetRequiredService<ITaskBusinessLogic>();
-                    TaskRequest taskRequest = JsonSerializer.Deserialize<TaskRequest>(
-                        message.Message.ToString()
-                    );
+                    string? messageStr = message.Message.ToString();
+                    TaskRequest? taskRequest = messageStr != null ? JsonSerializer.Deserialize<TaskRequest>(messageStr) : null;
                     try
                     {
                         if (taskRequest == null)
@@ -42,7 +41,10 @@ public sealed class PreProcessingQueue(IServiceScopeFactory serviceScopeFactory)
                     catch (Exception e)
                     {
                         Console.WriteLine($"Error in preprocessing queue: {e.Message}");
-                        logic.EmitTaskRequestErrorAsync(taskRequest.Id);
+                        if (taskRequest != null)
+                        {
+                            logic.EmitTaskRequestErrorAsync(taskRequest.Id);
+                        }
                     }
                 });
 
