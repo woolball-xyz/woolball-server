@@ -1,3 +1,5 @@
+using System.Text;
+using System.Text.Json;
 using Application.Logic;
 using Domain.Contracts;
 using Domain.Entities;
@@ -5,14 +7,11 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
-using System.Text;
-using System.Text.Json;
 
 namespace Presentation.EndPoints;
 
 public static class TasksEndPoints
 {
-
     public static void AddTasksEndPoints(this IEndpointRouteBuilder app)
     {
         var group = app.MapGroup("api/v1/");
@@ -31,7 +30,9 @@ public static class TasksEndPoints
     {
         try
         {
-            var userId = context.User.Claims.FirstOrDefault()?.Value ?? throw new Exception("User not found");
+            var userId =
+                context.User.Claims.FirstOrDefault()?.Value
+                ?? throw new Exception("User not found");
             if (string.IsNullOrEmpty(userId))
             {
                 context.Response.StatusCode = 401;

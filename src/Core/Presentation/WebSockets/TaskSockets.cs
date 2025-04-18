@@ -37,10 +37,10 @@ public static class TaskSockets
         }
 
         var webSocket = await context.WebSockets.AcceptWebSocketAsync();
-        
+
         // Adicionar o WebSocket ao gerenciador de conexões
         await webSocketNodesQueue.AddWebsocketInQueueAsync(id, webSocket);
-        
+
         var buffer = new byte[1024];
         WebSocketReceiveResult result;
 
@@ -62,7 +62,10 @@ public static class TaskSockets
                 if (!string.IsNullOrEmpty(data))
                 {
                     // Publicar a mensagem recebida para processamento
-                    await publisher.PublishAsync("message_received", new { ClientId = id, Message = data });
+                    await publisher.PublishAsync(
+                        "message_received",
+                        new { ClientId = id, Message = data }
+                    );
                 }
             } while (!result.CloseStatus.HasValue);
         }

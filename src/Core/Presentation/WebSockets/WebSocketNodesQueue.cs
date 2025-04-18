@@ -7,24 +7,20 @@ namespace Presentation.Websockets;
 
 public class WebSocketNodesQueue
 {
-    private Channel<(string,WebSocket)> _queue = Channel.CreateUnbounded<(string,WebSocket)>();
+    private Channel<(string, WebSocket)> _queue = Channel.CreateUnbounded<(string, WebSocket)>();
 
     public async Task AddWebsocketInQueueAsync(string nodeId, WebSocket socket)
     {
         var writer = _queue.Writer;
-        await writer.WriteAsync((nodeId,socket));
+        await writer.WriteAsync((nodeId, socket));
     }
 
-    public async Task<(string,WebSocket)> GetAvailableWebsocketAsync()
+    public async Task<(string, WebSocket)> GetAvailableWebsocketAsync()
     {
         var reader = _queue.Reader;
         var item = await reader.ReadAsync();
         return item;
     }
-    public async Task RemoveClientAsync(string nodeId)
-    {
-        
 
-
-    }
+    public async Task RemoveClientAsync(string nodeId) { }
 }

@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Text;
 using System.Threading.RateLimiting;
 using Application;
 using Infrastructure;
@@ -8,7 +9,6 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
-using System.Text;
 using Presentation;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -36,9 +36,10 @@ builder.Services.AddRateLimiter(_ =>
     )
 );
 
-var privateKey = Environment.GetEnvironmentVariable("SecretKey") ??
-        builder.Configuration["JwtSettings:SecretKey"]
-        ?? throw new Exception("Private key is null");
+var privateKey =
+    Environment.GetEnvironmentVariable("SecretKey")
+    ?? builder.Configuration["JwtSettings:SecretKey"]
+    ?? throw new Exception("Private key is null");
 
 builder
     .Services.AddAuthentication(x =>
@@ -52,9 +53,7 @@ builder
         x.SaveToken = true;
         x.TokenValidationParameters = new TokenValidationParameters
         {
-            IssuerSigningKey = new SymmetricSecurityKey(
-                Encoding.ASCII.GetBytes(privateKey)
-            ),
+            IssuerSigningKey = new SymmetricSecurityKey(Encoding.ASCII.GetBytes(privateKey)),
             ValidateIssuer = false,
             ValidateAudience = false,
             ValidateLifetime = false,

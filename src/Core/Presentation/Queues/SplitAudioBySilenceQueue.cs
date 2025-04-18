@@ -10,7 +10,8 @@ using StackExchange.Redis;
 
 namespace Background;
 
-public sealed class SplitAudioBySilenceQueue(IServiceScopeFactory serviceScopeFactory) : BackgroundService
+public sealed class SplitAudioBySilenceQueue(IServiceScopeFactory serviceScopeFactory)
+    : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -37,24 +38,25 @@ public sealed class SplitAudioBySilenceQueue(IServiceScopeFactory serviceScopeFa
         using var scope = serviceScopeFactory.CreateScope();
         IConnectionMultiplexer redis =
             scope.ServiceProvider.GetRequiredService<IConnectionMultiplexer>();
-        
-        var subscriber = redis.GetSubscriber();
 
+        var subscriber = redis.GetSubscriber();
 
         var consumer = await subscriber.SubscribeAsync("split_audio_by_silence_queue");
 
-        consumer.OnMessage(async (message) =>
-        {
-            try
+        consumer.OnMessage(
+            async (message) =>
             {
-                await ProccessMessageAsync(message.Message);
+                try
+                {
+                    await ProccessMessageAsync(message.Message);
+                }
+                catch (Exception e)
+                {
+                    //emit error
+                    Console.WriteLine($"Error in preprocessing queue: {e.Message}");
+                }
             }
-            catch (Exception e)
-            {
-                //emit error
-                Console.WriteLine($"Error in preprocessing queue: {e.Message}");
-            }
-        });
+        );
     }
 
     private async Task ProccessMessageAsync(RedisValue message)
@@ -62,7 +64,7 @@ public sealed class SplitAudioBySilenceQueue(IServiceScopeFactory serviceScopeFa
         using var scope = serviceScopeFactory.CreateScope();
         IConnectionMultiplexer redis =
             scope.ServiceProvider.GetRequiredService<IConnectionMultiplexer>();
-        
+
         var db = redis.GetDatabase();
 
         var request = System.Text.Json.JsonSerializer.Deserialize<TaskRequest>(message);

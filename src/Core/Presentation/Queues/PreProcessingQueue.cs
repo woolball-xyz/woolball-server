@@ -1,10 +1,10 @@
+using System.Text.Json;
 using Application.Logic;
 using Domain.WebServices;
 using Infrastructure.Repositories;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using StackExchange.Redis;
-using System.Text.Json;
 
 namespace Background;
 

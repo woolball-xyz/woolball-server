@@ -1,8 +1,8 @@
-﻿using StackExchange.Redis;
-using Domain.Contracts;
+﻿using Domain.Contracts;
 using Domain.Entities;
 using Infrastructure.Repositories;
 using Queue;
+using StackExchange.Redis;
 
 namespace Application.Logic;
 
@@ -13,14 +13,13 @@ public sealed class TaskBusinessLogic(
 {
     public async Task<bool> NonNegativeFundsAsync(TaskRequest taskRequest)
     {
-        if(taskRequest.RequesterId.HasValue == false){
+        if (taskRequest.RequesterId.HasValue == false)
+        {
             return false;
         }
         var requesterId = taskRequest.RequesterId.Value;
-        
-        var inputBalance = await applicationUserRepository.GetInputBalanceByTokenAsync(
-            requesterId
-        );
+
+        var inputBalance = await applicationUserRepository.GetInputBalanceByTokenAsync(requesterId);
         return inputBalance > 0;
     }
 

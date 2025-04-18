@@ -1,5 +1,5 @@
-using Microsoft.AspNetCore.Http;
 using Contracts.Constants;
+using Microsoft.AspNetCore.Http;
 
 public class FieldsConfig
 {
@@ -10,7 +10,7 @@ public class FieldsConfig
 
 public class TaskRequest
 {
-    public Guid Id { get; set; }= Guid.NewGuid(); 
+    public Guid Id { get; set; } = Guid.NewGuid();
     public string Task { get; set; }
     public Guid? RequesterId { get; set; }
 
@@ -50,7 +50,6 @@ public class TaskRequest
             var file = form.Files["input"];
             if (file != null)
             {
-               
                 if (!AudioValidation.ValidateMediaType(file.ContentType))
                 {
                     throw new InvalidOperationException("Invalid audio file type");
@@ -58,7 +57,7 @@ public class TaskRequest
                 var fileName = $"/shared/temp/{Guid.NewGuid()}_{file.FileName}";
                 using var stream = new FileStream(fileName, FileMode.Create);
                 await file.CopyToAsync(stream);
-                
+
                 request.Kwargs["input"] = fileName;
             }
             //check if input is a url or base64

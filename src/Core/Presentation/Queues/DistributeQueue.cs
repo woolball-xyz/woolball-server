@@ -31,7 +31,7 @@ public sealed class DistributeQueue : BackgroundService
                 using var scope = _serviceScopeFactory.CreateScope();
                 IConnectionMultiplexer redis =
                     scope.ServiceProvider.GetRequiredService<IConnectionMultiplexer>();
-                
+
                 var db = redis.GetDatabase();
                 var subscriber = redis.GetSubscriber();
                 var channel = RedisChannel.Literal("distribute_queue");
@@ -40,19 +40,27 @@ public sealed class DistributeQueue : BackgroundService
                 subscribe.OnMessage(async message =>
                 {
                     var taskRequestText = message.Message.ToString();
-                    if (string.IsNullOrEmpty(taskRequestText)) return;
+                    if (string.IsNullOrEmpty(taskRequestText))
+                        return;
 
                     try
                     {
                         var taskRequest = JsonSerializer.Deserialize<TaskRequest>(taskRequestText);
                         if (taskRequest != null)
                         {
-                           var (id, webSocket) = await _webSocketNodesQueue.GetAvailableWebsocketAsync();
+                            var (id, webSocket) =
+                                await _webSocketNodesQueue.GetAvailableWebsocketAsync();
                             taskRequest.PrivateArgs["node_id"] = id.ToString();
 
-                            var encodedTask = Encoding.UTF8.GetBytes(JsonSerializer.Serialize(taskRequest.Kwargs));
-                            await webSocket.SendAsync(encodedTask, WebSocketMessageType.Text, true, stoppingToken);
-
+                            var encodedTask = Encoding.UTF8.GetBytes(
+                                JsonSerializer.Serialize(taskRequest.Kwargs)
+                            );
+                            await webSocket.SendAsync(
+                                encodedTask,
+                                WebSocketMessageType.Text,
+                                true,
+                                stoppingToken
+                            );
 
                             // preserve task while it is being processed by a node
                             db.StringSet($"task:{taskRequest.Id}", taskRequestText);

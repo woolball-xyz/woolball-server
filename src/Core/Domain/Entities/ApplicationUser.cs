@@ -1,6 +1,7 @@
 using System.ComponentModel.DataAnnotations;
 using System.Text.Json.Serialization;
 using Domain.Primitives;
+
 namespace Domain.Entities;
 
 public class ApplicationUser : Entity

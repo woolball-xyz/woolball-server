@@ -1,9 +1,9 @@
-using StackExchange.Redis;
 using Application.Logic;
 using Domain.WebServices;
 using Infrastructure.Repositories;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using StackExchange.Redis;
 
 namespace Background;
 
@@ -21,10 +21,7 @@ public sealed class SessionTrackQueue(IServiceScopeFactory serviceScopeFactory) 
                 var subscriber = redis.GetSubscriber();
                 var consumer = await subscriber.SubscribeAsync("sesion_tracking_queue");
 
-                consumer.OnMessage(message =>
-                {
-                  
-                });
+                consumer.OnMessage(message => { });
 
                 // Keep the connection alive
                 await Task.Delay(Timeout.Infinite, stoppingToken);

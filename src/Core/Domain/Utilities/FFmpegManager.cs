@@ -4,6 +4,7 @@ using System.IO;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using Domain.Contracts;
+
 namespace Domain.Utilities
 {
     /// <summary>
@@ -12,7 +13,7 @@ namespace Domain.Utilities
     public static class FFmpegManager
     {
         private const double MinSegmentDuration = 20.0; // Minimum segment duration in seconds
-        private const double MaxSegmentDuration = 30.0; // Maximum segment duration in seconds  
+        private const double MaxSegmentDuration = 30.0; // Maximum segment duration in seconds
 
         public static async IAsyncEnumerable<AudioSegment> BreakAudioFile(string path)
         {
@@ -168,11 +169,9 @@ namespace Domain.Utilities
 
             if (process.ExitCode != 0)
             {
-               
                 throw new Exception($"FFmpeg failed to cut segment. Exit code: {process.ExitCode}");
             }
         }
-
 
         /// <summary>
         /// Gets the duration of an audio or video file in seconds using ffprobe
@@ -393,7 +392,10 @@ namespace Domain.Utilities
         }
 
         private static async Task<double> DetermineSegmentEnd(
-            string fileName, double currentPosition, double totalDuration)
+            string fileName,
+            double currentPosition,
+            double totalDuration
+        )
         {
             var segmentEnd = await FindOptimalSegmentEnd(fileName, currentPosition, totalDuration);
             return segmentEnd;
