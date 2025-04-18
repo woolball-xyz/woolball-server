@@ -29,7 +29,7 @@ jobs:
     - name: Set up .NET
       uses: actions/setup-dotnet@v1
       with:
-        dotnet-version: 10.x.x
+        dotnet-version: 10.0.100-preview.1.25120.13
     
     - name: Install CSharpier
       run: dotnet tool install -g csharpier
