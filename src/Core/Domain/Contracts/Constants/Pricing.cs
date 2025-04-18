@@ -1,3 +1,5 @@
+using Domain.Entities;
+
 public static class Pricing
 {
     // Process pricing ratio (always 50% of usage pricing)

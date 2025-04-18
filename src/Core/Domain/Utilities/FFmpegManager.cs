@@ -3,7 +3,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
-
+using Domain.Contracts;
 namespace Domain.Utilities
 {
     /// <summary>
@@ -11,6 +11,8 @@ namespace Domain.Utilities
     /// </summary>
     public static class FFmpegManager
     {
+        private const double MinSegmentDuration = 20.0; // Minimum segment duration in seconds
+        private const double MaxSegmentDuration = 30.0; // Maximum segment duration in seconds  
 
         public static async IAsyncEnumerable<AudioSegment> BreakAudioFile(string path)
         {
@@ -28,7 +30,7 @@ namespace Domain.Utilities
                 yield return new AudioSegment
                 {
                     FilePath = outputPath,
-                    Order = segmentNumber,
+                    Order = segmentNumber.ToString(),
                     StartTime = currentPosition,
                     EndTime = segmentEnd,
                 };
@@ -38,7 +40,7 @@ namespace Domain.Utilities
             }
         }
 
-        public async Task<double?> FindSilencePoint(
+        public static async Task<double?> FindSilencePoint(
             string fileName,
             double startPosition,
             double maxPosition
@@ -87,7 +89,7 @@ namespace Domain.Utilities
             return firstSilence;
         }
 
-        private async Task<double> FindOptimalSegmentEnd(
+        private static async Task<double> FindOptimalSegmentEnd(
             string fileName,
             double currentPosition,
             double totalDuration
@@ -140,7 +142,7 @@ namespace Domain.Utilities
             return finalEnd;
         }
 
-        public async Task CutSegment(
+        public static async Task CutSegment(
             string inputFile,
             string outputFile,
             double startTime,
@@ -166,11 +168,7 @@ namespace Domain.Utilities
 
             if (process.ExitCode != 0)
             {
-                _logger.LogError(
-                    "FFmpeg failed to cut segment. Exit code: {ExitCode}. Error: {Error}",
-                    process.ExitCode,
-                    error
-                );
+               
                 throw new Exception($"FFmpeg failed to cut segment. Exit code: {process.ExitCode}");
             }
         }
@@ -392,6 +390,13 @@ namespace Domain.Utilities
 
                 throw new Exception($"Falha ao converter o arquivo para WAV: {ex.Message}", ex);
             }
+        }
+
+        private static async Task<double> DetermineSegmentEnd(
+            string fileName, double currentPosition, double totalDuration)
+        {
+            var segmentEnd = await FindOptimalSegmentEnd(fileName, currentPosition, totalDuration);
+            return segmentEnd;
         }
     }
 }

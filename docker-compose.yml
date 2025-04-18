@@ -2,11 +2,10 @@ version: '3.1'
 
 services:
   core-api:
-  #  image: ghcr.io/programador-tv/dev-core-api
    container_name: core-api
    restart: always
    ports:
-    - 9002:80
+    - 9002:8080
    build:
     context: ./src/
     dockerfile: ./WebApi/dockerfile.aspnet
@@ -17,11 +16,10 @@ services:
     - app-network
 
   core-websocket:
-  #  image: ghcr.io/programador-tv/dev-core-websocket
    container_name: core-websocket
    restart: always
    ports:
-    - 9003:80
+    - 9003:8080
    build:
     context: ./src/
     dockerfile: ./WebSocket/dockerfile.aspnet
@@ -32,7 +30,6 @@ services:
     - app-network
 
   core-background:
-  #  image: ghcr.io/programador-tv/dev-core-background
    container_name: core-background
    restart: always
    build:

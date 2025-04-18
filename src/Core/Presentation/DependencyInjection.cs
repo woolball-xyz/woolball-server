@@ -24,9 +24,11 @@ public static class DependencyInjection
         return services;
     }
 
-    public static IServiceCollection AddWorkers(this IServiceCollection services)
+    public static IServiceCollection AddBackgroundQueues(this IServiceCollection services)
     {
-        services.AddHostedService<TemplateWorker>();
+        services.AddHostedService<PreProcessingQueue>();
+        services.AddHostedService<SplitAudioBySilenceQueue>();
+        services.AddHostedService<SplitAudioBySilenceQueue>();
 
         return services;
     }

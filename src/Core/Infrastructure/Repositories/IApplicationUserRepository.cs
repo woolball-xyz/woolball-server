@@ -4,6 +4,6 @@ namespace Infrastructure.Repositories
 {
     public interface IApplicationUserRepository
     {
-        bool InputBalanceGreaterThanZeroByTokenAsync(Guid token);
+        Task<decimal> GetInputBalanceByTokenAsync(Guid token);
     }
 }

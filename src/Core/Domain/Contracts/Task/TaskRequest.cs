@@ -1,6 +1,7 @@
+using Microsoft.AspNetCore.Http;
 using Contracts.Constants;
 
-private class FieldsConfig
+public class FieldsConfig
 {
     public List<string> MandatoryFields { get; set; } = new();
     public List<List<string>> AlternativeFields { get; set; } = new();
@@ -9,7 +10,7 @@ private class FieldsConfig
 
 public class TaskRequest
 {
-    public readonly Guid Id = Guid.NewGuid(); 
+    public Guid Id { get; set; }= Guid.NewGuid(); 
     public string Task { get; set; }
     public Guid? RequesterId { get; set; }
 
@@ -30,7 +31,7 @@ public class TaskRequest
             },
         };
 
-    public static TaskRequest Create(IFormCollection form)
+    public static async Task<TaskRequest> Create(IFormCollection form)
     {
         var request = new TaskRequest();
         request.Task = form["task"];
@@ -46,16 +47,18 @@ public class TaskRequest
 
         if (request.Task == AvailableModels.SpeechToText)
         {
-            //check if form have image with name input
-            if (form.Files.ContainsKey("input") && form.Files["input"] is IFormFile file)
+            var file = form.Files["input"];
+            if (file != null)
             {
+               
                 if (!AudioValidation.ValidateMediaType(file.ContentType))
                 {
                     throw new InvalidOperationException("Invalid audio file type");
                 }
                 var fileName = $"/shared/temp/{Guid.NewGuid()}_{file.FileName}";
                 using var stream = new FileStream(fileName, FileMode.Create);
-                file.CopyTo(stream);
+                await file.CopyToAsync(stream);
+                
                 request.Kwargs["input"] = fileName;
             }
             //check if input is a url or base64
@@ -83,6 +86,7 @@ public class TaskRequest
                         throw new InvalidOperationException("Invalid audio file type from URL");
                     }
                     var bytes = await response.Content.ReadAsByteArrayAsync();
+                    var extension = Path.GetExtension(input);
                     var fileName = $"/shared/temp/{Guid.NewGuid()}{extension}";
                     File.WriteAllBytes(fileName, bytes);
                     request.Kwargs["input"] = fileName;
@@ -93,24 +97,24 @@ public class TaskRequest
         return request;
     }
 
-    public bool IsValidTask(this TaskRequest request)
+    public bool IsValidTask()
     {
-        return AvailableModels.Names.ContainsKey(request.Task);
+        return AvailableModels.Names.ContainsKey(this.Task);
     }
 
-    public (bool, string?) IsValidFields(this TaskRequest request)
+    public (bool, string?) IsValidFields()
     {
-        if (!Fields.ContainsKey(request.Task))
+        if (!Fields.ContainsKey(this.Task))
         {
             return (false, "Task not registered");
         }
 
-        var config = Fields[request.Task];
+        var config = Fields[this.Task];
 
         // Check mandatory fields first
         foreach (var field in config.MandatoryFields)
         {
-            if (!request.Kwargs.ContainsKey(field))
+            if (!this.Kwargs.ContainsKey(field))
             {
                 return (false, $"Mandatory field '{field}' is missing");
             }
@@ -122,7 +126,7 @@ public class TaskRequest
             bool isGroupValid = true;
             foreach (var field in fieldGroup)
             {
-                if (!request.Kwargs.ContainsKey(field))
+                if (!this.Kwargs.ContainsKey(field))
                 {
                     isGroupValid = false;
                     break;

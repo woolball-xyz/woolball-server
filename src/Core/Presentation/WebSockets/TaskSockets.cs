@@ -28,7 +28,6 @@ public static class TaskSockets
         HttpContext context,
         IMessagePublisher publisher,
         WebSocketNodesQueue webSocketNodesQueue,
-        WebSocketMessageSender messageSender,
         string id
     )
     {
@@ -78,7 +77,7 @@ public static class TaskSockets
         finally
         {
             // Remover o WebSocket do gerenciador de conexões quando a conexão for fechada
-            await connectionManager.RemoveSocket(id);
+            await webSocketNodesQueue.RemoveClientAsync(id);
         }
 
         return Results.Ok();

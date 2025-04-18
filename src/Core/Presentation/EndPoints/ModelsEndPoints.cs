@@ -21,7 +21,7 @@ public static class ModelsEndPoints
         ;
     }
 
-    public static async Task<IResult> handleModels(string task)
+    public static IResult handleModels(string task)
     {
         if (AvailableModels.Names.ContainsKey(task))
         {

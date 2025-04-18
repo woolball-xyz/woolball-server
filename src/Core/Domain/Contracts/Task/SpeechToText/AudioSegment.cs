@@ -1,4 +1,4 @@
-namespace audio_breaker_stream.Models;
+namespace Domain.Contracts;
 
 public class AudioSegment
 {

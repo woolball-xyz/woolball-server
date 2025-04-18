@@ -3,6 +3,8 @@ using Domain.WebServices;
 using Infrastructure.Repositories;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using StackExchange.Redis;
+using System.Text.Json;
 
 namespace Background;
 
@@ -17,10 +19,11 @@ public sealed class PreProcessingQueue(IServiceScopeFactory serviceScopeFactory)
                 using var scope = serviceScopeFactory.CreateScope();
                 IConnectionMultiplexer redis =
                     scope.ServiceProvider.GetRequiredService<IConnectionMultiplexer>();
-                var db = redis.GetDatabase();
-                var channel = await db.SubscribeAsync("preprocessing_queue");
 
-                channel.OnMessage(message =>
+                var subscriber = redis.GetSubscriber();
+                var consumer = await subscriber.SubscribeAsync("preprocessing_queue");
+
+                consumer.OnMessage(message =>
                 {
                     var logic = scope.ServiceProvider.GetRequiredService<ITaskBusinessLogic>();
                     TaskRequest taskRequest = JsonSerializer.Deserialize<TaskRequest>(
@@ -33,7 +36,7 @@ public sealed class PreProcessingQueue(IServiceScopeFactory serviceScopeFactory)
 
                         if (taskRequest.Task == "speech-to-text")
                         {
-                            logic.PublishSplitAudioBySilenceQueueAsync(taskRequest.Id, taskRequest);
+                            logic.PublishSplitAudioBySilenceQueueAsync(taskRequest);
                         }
                     }
                     catch (Exception e)

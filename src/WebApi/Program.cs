@@ -3,15 +3,19 @@ using System.Threading.RateLimiting;
 using Application;
 using Infrastructure;
 using Infrastructure.Contexts;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.IdentityModel.Tokens;
+using System.Text;
 using Presentation;
 
 var builder = WebApplication.CreateBuilder(args);
 
 builder
     .Services.AddDatabase(builder.Configuration)
-    .AddRedis()
+    .AddRedis(builder.Configuration)
     .AddRepositories()
     .AddApplication()
     .AddSpecificTimeZone();
@@ -32,6 +36,10 @@ builder.Services.AddRateLimiter(_ =>
     )
 );
 
+var privateKey = Environment.GetEnvironmentVariable("SecretKey") ??
+        builder.Configuration["JwtSettings:SecretKey"]
+        ?? throw new Exception("Private key is null");
+
 builder
     .Services.AddAuthentication(x =>
     {
@@ -45,7 +53,7 @@ builder
         x.TokenValidationParameters = new TokenValidationParameters
         {
             IssuerSigningKey = new SymmetricSecurityKey(
-                Encoding.ASCII.GetBytes(Configuration.PrivateKey)
+                Encoding.ASCII.GetBytes(privateKey)
             ),
             ValidateIssuer = false,
             ValidateAudience = false,

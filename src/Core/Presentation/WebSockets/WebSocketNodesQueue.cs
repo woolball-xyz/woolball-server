@@ -1,11 +1,13 @@
 using System.Net.WebSockets;
 using System.Text;
+using System.Threading.Channels;
+using System.Threading.Tasks;
 
 namespace Presentation.Websockets;
 
 public class WebSocketNodesQueue
 {
-    private Channel<WebSocket> _queue = new UnboundedChannel<(Guid,WebSocket)>();
+    private Channel<(string,WebSocket)> _queue = Channel.CreateUnbounded<(string,WebSocket)>();
 
     public async Task AddWebsocketInQueueAsync(string nodeId, WebSocket socket)
     {
@@ -13,16 +15,16 @@ public class WebSocketNodesQueue
         await writer.WriteAsync((nodeId,socket));
     }
 
-    public async task<(Guid,WebSocket)> GetAvailableWebsocketAsync()
+    public async Task<(string,WebSocket)> GetAvailableWebsocketAsync()
     {
         var reader = _queue.Reader;
-        var result = await reader.ReadAsync<(Guid, WebSocket)>();
-        if (result.TryGetContent(out var item))
-        {
-            return item;
-        }
-        return null;
+        var item = await reader.ReadAsync();
+        return item;
     }
-    
+    public async Task RemoveClientAsync(string nodeId)
+    {
+        
 
+
+    }
 }

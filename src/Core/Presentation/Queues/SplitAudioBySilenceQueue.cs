@@ -1,14 +1,16 @@
 using System.IO;
+using System.Text.Json;
 using Application.Logic;
 using Domain.Utilities;
 using Domain.WebServices;
 using Infrastructure.Repositories;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using StackExchange.Redis;
 
 namespace Background;
 
-public sealed class PreProcessingQueue(IServiceScopeFactory serviceScopeFactory) : BackgroundService
+public sealed class SplitAudioBySilenceQueue(IServiceScopeFactory serviceScopeFactory) : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -35,14 +37,17 @@ public sealed class PreProcessingQueue(IServiceScopeFactory serviceScopeFactory)
         using var scope = serviceScopeFactory.CreateScope();
         IConnectionMultiplexer redis =
             scope.ServiceProvider.GetRequiredService<IConnectionMultiplexer>();
-        var db = redis.GetDatabase();
-        var channel = await db.SubscribeAsync("split_audio_by_silence_queue");
+        
+        var subscriber = redis.GetSubscriber();
 
-        channel.OnMessage(message =>
+
+        var consumer = await subscriber.SubscribeAsync("split_audio_by_silence_queue");
+
+        consumer.OnMessage(async (message) =>
         {
             try
             {
-                await ProccessMessageAsync(message);
+                await ProccessMessageAsync(message.Message);
             }
             catch (Exception e)
             {
@@ -54,11 +59,17 @@ public sealed class PreProcessingQueue(IServiceScopeFactory serviceScopeFactory)
 
     private async Task ProccessMessageAsync(RedisValue message)
     {
-        var request = System.Text.Json.JsonSerializer.Deserialize<TaskRequest>(message.Message);
+        using var scope = serviceScopeFactory.CreateScope();
+        IConnectionMultiplexer redis =
+            scope.ServiceProvider.GetRequiredService<IConnectionMultiplexer>();
+        
+        var db = redis.GetDatabase();
+
+        var request = System.Text.Json.JsonSerializer.Deserialize<TaskRequest>(message);
         if (request == null)
             return;
 
-        var filePath = request.Kwargs["input"];
+        var filePath = request.Kwargs["input"].ToString();
         var extension = Path.GetExtension(filePath);
 
         using var fileStream = new FileStream(filePath, FileMode.Open, FileAccess.Read);
@@ -70,7 +81,8 @@ public sealed class PreProcessingQueue(IServiceScopeFactory serviceScopeFactory)
             wavFilePath = await FFmpegManager.ConvertToWavAsync(filePath);
         }
 
-        var duration = FFmpegManager.GetDuration(wavFilePath);
+        var duration = await FFmpegManager.GetDurationAsync(wavFilePath);
+
         if (duration <= 0)
             throw new Exception("Invalid duration");
 
@@ -84,7 +96,7 @@ public sealed class PreProcessingQueue(IServiceScopeFactory serviceScopeFactory)
             return;
         }
 
-        await foreach (var segment in FFmpegManager.BreakAudioFile(tempFilePath))
+        await foreach (var segment in FFmpegManager.BreakAudioFile(wavFilePath))
         {
             request.Kwargs["input"] = segment.FilePath;
             request.PrivateArgs["start"] = segment.StartTime.ToString();

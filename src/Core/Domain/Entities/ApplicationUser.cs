@@ -1,7 +1,9 @@
 using System.ComponentModel.DataAnnotations;
 using System.Text.Json.Serialization;
+using Domain.Primitives;
+namespace Domain.Entities;
 
-public class ApplicationUser
+public class ApplicationUser : Entity
 {
     [Key]
     public Guid Id { get; set; } = Guid.NewGuid();

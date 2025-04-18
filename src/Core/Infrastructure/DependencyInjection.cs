@@ -53,15 +53,13 @@ public static class DependencyInjection
     )
     {
         string connectionString =
-            Environment.GetEnvironmentVariable("REDIS")
-            ?? configuration.GetConnectionString("REDIS")
-            ?? throw new KeyNotFoundException("REDIS");
+            Environment.GetEnvironmentVariable("RedisConnection")
+            ?? configuration.GetConnectionString("RedisConnection")
+            ?? throw new KeyNotFoundException("RedisConnection");
 
         services.AddSingleton<IConnectionMultiplexer>(
             ConnectionMultiplexer.Connect(connectionString)
         );
-        // services.AddSingleton<IRedisContext, RedisContext>();
-        // services.AddSingleton<IChatRedisRepository, ChatRedisRepository>();
 
         return services;
     }
@@ -109,9 +107,9 @@ public static class DependencyInjection
     )
     {
         string connectionString =
-            Environment.GetEnvironmentVariable("CONNECTIONSTRING")
-            ?? configuration.GetConnectionString("CONNECTIONSTRING")
-            ?? throw new KeyNotFoundException("CONNECTIONSTRING");
+            Environment.GetEnvironmentVariable("DefaultConnection")
+            ?? configuration.GetConnectionString("DefaultConnection")
+            ?? throw new KeyNotFoundException("DefaultConnection");
 
         services.AddDbContext<ApplicationDbContext>(options =>
             options
@@ -143,7 +141,7 @@ public static class DependencyInjection
 
     public static IServiceCollection AddRepositories(this IServiceCollection services)
     {
-        services.AddScoped<ITemplateRepository, TemplateRepository>();
+        services.AddScoped<IApplicationUserRepository, ApplicationUserRepository>();
 
         return services;
     }

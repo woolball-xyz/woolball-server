@@ -13,7 +13,7 @@ public static class DependencyInjection
 
         // services.AddValidatorsFromAssembly(assembly);
 
-        services.AddScoped<ITemplateBusinessLogic, TemplateBusinessLogic>();
+        services.AddScoped<ITaskBusinessLogic, TaskBusinessLogic>();
         return services;
     }
 }

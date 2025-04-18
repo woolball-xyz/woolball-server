@@ -15,13 +15,13 @@ public sealed class DistributeQueue : BackgroundService
 
     public DistributeQueue(
         IServiceScopeFactory serviceScopeFactory,
-        WebSocketMessageSender webSocketNodesQueue
+        WebSocketNodesQueue webSocketNodesQueue
     )
     {
         _serviceScopeFactory = serviceScopeFactory;
         _webSocketNodesQueue = webSocketNodesQueue;
     }
-{
+
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         while (!stoppingToken.IsCancellationRequested)
@@ -31,11 +31,13 @@ public sealed class DistributeQueue : BackgroundService
                 using var scope = _serviceScopeFactory.CreateScope();
                 IConnectionMultiplexer redis =
                     scope.ServiceProvider.GetRequiredService<IConnectionMultiplexer>();
-
+                
                 var db = redis.GetDatabase();
-                var channel = await db.SubscribeAsync("distribute_queue");
+                var subscriber = redis.GetSubscriber();
+                var channel = RedisChannel.Literal("distribute_queue");
+                var subscribe = await subscriber.SubscribeAsync(channel);
 
-                channel.OnMessage(async message =>
+                subscribe.OnMessage(async message =>
                 {
                     var taskRequestText = message.Message.ToString();
                     if (string.IsNullOrEmpty(taskRequestText)) return;
@@ -45,13 +47,7 @@ public sealed class DistributeQueue : BackgroundService
                         var taskRequest = JsonSerializer.Deserialize<TaskRequest>(taskRequestText);
                         if (taskRequest != null)
                         {
-                            var result = await _webSocketNodesQueue.GetAvailableWebsocketAsync();
-                            if (result == null)
-                            {
-                                Console.WriteLine("No available websockets");
-                                return;
-                            }
-                            var (id, webSocket) = result;
+                           var (id, webSocket) = await _webSocketNodesQueue.GetAvailableWebsocketAsync();
                             taskRequest.PrivateArgs["node_id"] = id.ToString();
 
                             var encodedTask = Encoding.UTF8.GetBytes(JsonSerializer.Serialize(taskRequest.Kwargs));
@@ -61,7 +57,7 @@ public sealed class DistributeQueue : BackgroundService
                             // preserve task while it is being processed by a node
                             db.StringSet($"task:{taskRequest.Id}", taskRequestText);
                             // add task to pending tasks
-                            await db.ListRightPushAsync("pending_tasks", taskRequest.Id);
+                            await db.ListRightPushAsync("pending_tasks", taskRequest.Id.ToString());
                         }
                     }
                     catch (Exception ex)

@@ -8,10 +8,10 @@ public sealed class ApplicationUserRepository(ApplicationDbContext context)
     : GenericRepository<ApplicationUser>(context),
         IApplicationUserRepository
 {
-    public async Task<int> GetInputBalanceByTokenAsync(Guid token)
+    public async Task<decimal> GetInputBalanceByTokenAsync(Guid token)
     {
         return await DbContext
-            .ApplicationUsers.Where(e => e.Token == token)
+            .ApplicationUsers.Where(e => e.Token == token.ToString())
             .Select(e => e.InputBalance)
             .FirstOrDefaultAsync();
     }
