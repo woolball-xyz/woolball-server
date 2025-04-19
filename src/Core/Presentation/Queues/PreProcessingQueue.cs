@@ -1,7 +1,5 @@
 using System.Text.Json;
 using Application.Logic;
-using Domain.WebServices;
-using Infrastructure.Repositories;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using StackExchange.Redis;
@@ -21,13 +19,18 @@ public sealed class PreProcessingQueue(IServiceScopeFactory serviceScopeFactory)
                     scope.ServiceProvider.GetRequiredService<IConnectionMultiplexer>();
 
                 var subscriber = redis.GetSubscriber();
-                var consumer = await subscriber.SubscribeAsync(RedisChannel.Literal("preprocessing_queue"));
+                var consumer = await subscriber.SubscribeAsync(
+                    RedisChannel.Literal("preprocessing_queue")
+                );
 
                 consumer.OnMessage(message =>
                 {
                     var logic = scope.ServiceProvider.GetRequiredService<ITaskBusinessLogic>();
                     string? messageStr = message.Message.ToString();
-                    TaskRequest? taskRequest = messageStr != null ? JsonSerializer.Deserialize<TaskRequest>(messageStr) : null;
+                    TaskRequest? taskRequest =
+                        messageStr != null
+                            ? JsonSerializer.Deserialize<TaskRequest>(messageStr)
+                            : null;
                     try
                     {
                         if (taskRequest == null)
@@ -43,7 +46,7 @@ public sealed class PreProcessingQueue(IServiceScopeFactory serviceScopeFactory)
                         Console.WriteLine($"Error in preprocessing queue: {e.Message}");
                         if (taskRequest != null)
                         {
-                            logic.EmitTaskRequestErrorAsync(taskRequest.Id);
+                            logic.EmitTaskRequestErrorAsync(taskRequest.Id.ToString());
                         }
                     }
                 });

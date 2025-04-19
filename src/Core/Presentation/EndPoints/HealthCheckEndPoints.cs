@@ -1,6 +1,5 @@
 using Application.Logic;
 using Domain.Contracts;
-using Domain.Entities;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;

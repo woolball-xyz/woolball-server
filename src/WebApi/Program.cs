@@ -3,7 +3,6 @@ using System.Text;
 using System.Threading.RateLimiting;
 using Application;
 using Infrastructure;
-using Infrastructure.Contexts;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.RateLimiting;
@@ -13,12 +12,7 @@ using Presentation;
 
 var builder = WebApplication.CreateBuilder(args);
 
-builder
-    .Services.AddDatabase(builder.Configuration)
-    .AddRedis(builder.Configuration)
-    .AddRepositories()
-    .AddApplication()
-    .AddSpecificTimeZone();
+builder.Services.AddRedis(builder.Configuration).AddApplication();
 
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
@@ -36,30 +30,30 @@ builder.Services.AddRateLimiter(_ =>
     )
 );
 
-var privateKey =
-    Environment.GetEnvironmentVariable("SecretKey")
-    ?? builder.Configuration["JwtSettings:SecretKey"]
-    ?? throw new Exception("Private key is null");
+// var privateKey =
+//     Environment.GetEnvironmentVariable("SecretKey")
+//     ?? builder.Configuration["JwtSettings:SecretKey"]
+//     ?? throw new Exception("Private key is null");
 
-builder
-    .Services.AddAuthentication(x =>
-    {
-        x.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
-        x.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
-    })
-    .AddJwtBearer(x =>
-    {
-        x.RequireHttpsMetadata = false;
-        x.SaveToken = true;
-        x.TokenValidationParameters = new TokenValidationParameters
-        {
-            IssuerSigningKey = new SymmetricSecurityKey(Encoding.ASCII.GetBytes(privateKey)),
-            ValidateIssuer = false,
-            ValidateAudience = false,
-            ValidateLifetime = false,
-            ClockSkew = TimeSpan.Zero,
-        };
-    });
+// builder
+//     .Services.AddAuthentication(x =>
+//     {
+//         x.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
+//         x.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
+//     })
+//     .AddJwtBearer(x =>
+//     {
+//         x.RequireHttpsMetadata = false;
+//         x.SaveToken = true;
+//         x.TokenValidationParameters = new TokenValidationParameters
+//         {
+//             IssuerSigningKey = new SymmetricSecurityKey(Encoding.ASCII.GetBytes(privateKey)),
+//             ValidateIssuer = false,
+//             ValidateAudience = false,
+//             ValidateLifetime = false,
+//             ClockSkew = TimeSpan.Zero,
+//         };
+//     });
 
 var app = builder.Build();
 
@@ -71,12 +65,6 @@ if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
     app.UseSwaggerUI();
-}
-
-using (var scope = app.Services.CreateScope())
-{
-    var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
-    db.Database.Migrate();
 }
 
 // Configure the HTTP request pipeline.

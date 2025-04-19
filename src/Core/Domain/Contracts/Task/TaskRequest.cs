@@ -31,14 +31,14 @@ public class TaskRequest
             },
         };
 
-    public static async Task<TaskRequest> Create(IFormCollection form)
+    public static async Task<TaskRequest> Create(IFormCollection form, string task)
     {
         var request = new TaskRequest();
-        request.Task = form["task"];
+        request.Task = task;
         request.Kwargs = new Dictionary<string, object>();
         request.PrivateArgs = new Dictionary<string, object>();
 
-        request.Kwargs["id"] = request.Id;
+        request.Kwargs["type"] = "PROCESS_EVENT";
 
         foreach (var key in form.Keys)
         {

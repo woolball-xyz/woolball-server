@@ -1,6 +1,4 @@
 using Application.Logic;
-using Domain.WebServices;
-using Infrastructure.Repositories;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 

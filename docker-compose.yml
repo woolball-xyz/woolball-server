@@ -4,13 +4,14 @@ services:
   core-api:
    container_name: core-api
    restart: always
+   environment:
+    - RedisConnection=redis:6379,password=StrongRedisPassword123!
    ports:
     - 9002:8080
    build:
     context: ./src/
     dockerfile: ./WebApi/dockerfile.aspnet
    depends_on:
-    - sqlserver
     - redis
    networks:
     - app-network
@@ -18,13 +19,14 @@ services:
   core-websocket:
    container_name: core-websocket
    restart: always
+   environment:
+    - RedisConnection=redis:6379,password=StrongRedisPassword123!
    ports:
     - 9003:8080
    build:
     context: ./src/
     dockerfile: ./WebSocket/dockerfile.aspnet
    depends_on:
-    - sqlserver
     - redis
    networks:
     - app-network
@@ -32,25 +34,13 @@ services:
   core-background:
    container_name: core-background
    restart: always
+   environment:
+    - RedisConnection=redis:6379,password=StrongRedisPassword123!
    build:
     context: ./src/
     dockerfile: ./Background/dockerfile.aspnet
    depends_on:
-    - sqlserver
     - redis
-   networks:
-    - app-network
-
-  sqlserver:
-   image: mcr.microsoft.com/mssql/server:2022-latest
-   container_name: sqlserver
-   restart: always
-   environment:
-    - ACCEPT_EULA=Y
-    - MSSQL_SA_PASSWORD=StrongPassword123!
-    - MSSQL_PID=Developer
-   volumes:
-    - sqlserver-data:/var/opt/mssql
    networks:
     - app-network
 

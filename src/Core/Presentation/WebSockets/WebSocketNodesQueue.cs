@@ -11,16 +11,25 @@ public class WebSocketNodesQueue
 
     public async Task AddWebsocketInQueueAsync(string nodeId, WebSocket socket)
     {
-        var writer = _queue.Writer;
-        await writer.WriteAsync((nodeId, socket));
+        await _queue.Writer.WriteAsync((nodeId, socket));
     }
 
     public async Task<(string, WebSocket)> GetAvailableWebsocketAsync()
     {
-        var reader = _queue.Reader;
-        var item = await reader.ReadAsync();
-        return item;
-    }
+        while (await _queue.Reader.WaitToReadAsync())
+        {
+            while (_queue.Reader.TryRead(out var item))
+            {
+                var (groupName, webSocket) = item;
 
-    public Task RemoveClientAsync(string nodeId) { return Task.CompletedTask; }
+                if (webSocket?.State == WebSocketState.Open)
+                {
+                    return item;
+                }
+            }
+        }
+
+        // If we get here, the channel is empty and no available WebSocket was found
+        return (null, null);
+    }
 }

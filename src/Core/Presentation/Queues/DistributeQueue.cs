@@ -41,8 +41,9 @@ public sealed class DistributeQueue : BackgroundService
                 {
                     var taskRequestText = message.Message.ToString();
                     if (string.IsNullOrEmpty(taskRequestText))
+                    {
                         return;
-
+                    }
                     try
                     {
                         var taskRequest = JsonSerializer.Deserialize<TaskRequest>(taskRequestText);
@@ -50,11 +51,25 @@ public sealed class DistributeQueue : BackgroundService
                         {
                             var (id, webSocket) =
                                 await _webSocketNodesQueue.GetAvailableWebsocketAsync();
+
+                            if (id == null)
+                            {
+                                throw new Exception("No available nodes");
+                            }
+
                             taskRequest.PrivateArgs["node_id"] = id.ToString();
 
                             var encodedTask = Encoding.UTF8.GetBytes(
-                                JsonSerializer.Serialize(taskRequest.Kwargs)
+                                JsonSerializer.Serialize(
+                                    new
+                                    {
+                                        Id = taskRequest.Id,
+                                        Key = taskRequest.Task,
+                                        Value = taskRequest.Kwargs,
+                                    }
+                                )
                             );
+
                             await webSocket.SendAsync(
                                 encodedTask,
                                 WebSocketMessageType.Text,
@@ -63,13 +78,18 @@ public sealed class DistributeQueue : BackgroundService
                             );
 
                             // preserve task while it is being processed by a node
-                            db.StringSet($"task:{taskRequest.Id}", taskRequestText);
-                            // add task to pending tasks
-                            await db.ListRightPushAsync("pending_tasks", taskRequest.Id.ToString());
+                            await db.StringSetAsync($"task:{taskRequest.Id}", taskRequestText);
+
+                            var subscriber = redis.GetSubscriber();
+
+                            var channel = RedisChannel.Literal("sesion_tracking_queue");
+
+                            await subscriber.PublishAsync(channel, taskRequest.Id.ToString());
                         }
                     }
                     catch (Exception ex)
                     {
+                        // emit error
                         Console.WriteLine($"Error deserializing message: {ex.Message}");
                     }
                 });

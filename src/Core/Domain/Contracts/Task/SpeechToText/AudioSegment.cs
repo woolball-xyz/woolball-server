@@ -6,4 +6,5 @@ public class AudioSegment
     public required string Order { get; set; }
     public double StartTime { get; set; }
     public double EndTime { get; set; }
+    public bool IsLast { get; set; }
 }

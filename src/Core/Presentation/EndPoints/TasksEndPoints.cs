@@ -1,8 +1,8 @@
 using System.Text;
 using System.Text.Json;
 using Application.Logic;
+using Contracts.Constants;
 using Domain.Contracts;
-using Domain.Entities;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -43,7 +43,7 @@ public static class TasksEndPoints
             }
 
             var form = await context.Request.ReadFormAsync();
-            var request = await TaskRequest.Create(form);
+            var request = await TaskRequest.Create(form, AvailableModels.SpeechToText);
 
             if (request == null)
             {
@@ -70,16 +70,6 @@ public static class TasksEndPoints
                 return;
             }
             request.RequesterId = Guid.Parse(userId);
-            if (!await logic.NonNegativeFundsAsync(request))
-            {
-                context.Response.StatusCode = 402; // Payment Required - more appropriate for insufficient funds
-                await context.Response.WriteAsync(
-                    JsonSerializer.Serialize(
-                        new { error = "Insufficient funds for this operation" }
-                    )
-                );
-                return;
-            }
 
             if (!await logic.PublishPreProcessingQueueAsync(request))
             {
@@ -95,10 +85,35 @@ public static class TasksEndPoints
                 return;
             }
 
-            var response = await logic.AwaitTaskResultAsync(request);
+            bool isStreaming =
+                request.Kwargs.ContainsKey("stream")
+                && request.Kwargs["stream"].ToString().ToLower() == "true";
 
-            context.Response.StatusCode = 200;
-            await context.Response.WriteAsync(JsonSerializer.Serialize(response));
+            if (isStreaming)
+            {
+                context.Response.ContentType = "text/plain";
+                context.Response.Headers.Add("X-Content-Type-Options", "nosniff");
+                context.Response.Headers.Add("Cache-Control", "no-cache");
+
+                await foreach (
+                    var message in logic.StreamTaskResultAsync(request, cancellationToken)
+                )
+                {
+                    var bytes = System.Text.Encoding.UTF8.GetBytes(message + "\n");
+                    await context.Response.Body.WriteAsync(bytes, 0, bytes.Length);
+                    await context.Response.Body.FlushAsync();
+                }
+            }
+            else
+            {
+                var response = await logic.AwaitTaskResultAsync(request);
+                if (!string.IsNullOrEmpty(response))
+                {
+                    context.Response.StatusCode = 200;
+                    context.Response.ContentType = "application/json";
+                    await context.Response.WriteAsync(response);
+                }
+            }
             return;
         }
         catch (Exception e)

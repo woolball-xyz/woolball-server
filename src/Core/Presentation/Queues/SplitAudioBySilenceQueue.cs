@@ -2,8 +2,6 @@ using System.IO;
 using System.Text.Json;
 using Application.Logic;
 using Domain.Utilities;
-using Domain.WebServices;
-using Infrastructure.Repositories;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using StackExchange.Redis;
@@ -41,7 +39,9 @@ public sealed class SplitAudioBySilenceQueue(IServiceScopeFactory serviceScopeFa
 
         var subscriber = redis.GetSubscriber();
 
-        var consumer = await subscriber.SubscribeAsync(RedisChannel.Literal("split_audio_by_silence_queue"));
+        var consumer = await subscriber.SubscribeAsync(
+            RedisChannel.Literal("split_audio_by_silence_queue")
+        );
 
         consumer.OnMessage(
             async (message) =>
@@ -68,7 +68,10 @@ public sealed class SplitAudioBySilenceQueue(IServiceScopeFactory serviceScopeFa
         var db = redis.GetDatabase();
 
         string? messageStr = message.ToString();
-        var request = messageStr != null ? System.Text.Json.JsonSerializer.Deserialize<TaskRequest>(messageStr) : null;
+        var request =
+            messageStr != null
+                ? System.Text.Json.JsonSerializer.Deserialize<TaskRequest>(messageStr)
+                : null;
         if (request == null)
             return;
 
@@ -103,9 +106,9 @@ public sealed class SplitAudioBySilenceQueue(IServiceScopeFactory serviceScopeFa
         {
             request.Kwargs["input"] = segment.FilePath;
             request.PrivateArgs["start"] = segment.StartTime.ToString();
-            request.PrivateArgs["end"] = segment.EndTime.ToString();
             request.PrivateArgs["order"] = segment.Order.ToString();
             request.PrivateArgs["parent"] = request.Id.ToString();
+            request.PrivateArgs["last"] = segment.IsLast.ToString();
             request.Id = Guid.NewGuid();
             await db.ListRightPushAsync("distribute_queue", JsonSerializer.Serialize(request));
         }

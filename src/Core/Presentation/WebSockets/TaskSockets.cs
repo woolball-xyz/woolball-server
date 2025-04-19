@@ -3,13 +3,12 @@ using System.Text;
 using System.Text.Json;
 using Application.Logic;
 using Domain.Contracts;
-using Domain.Entities;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;
-using Queue;
+using StackExchange.Redis;
 
 namespace Presentation.Websockets;
 
@@ -26,8 +25,9 @@ public static class TaskSockets
 
     public static async Task<IResult> ReceiveAsync(
         HttpContext context,
-        IMessagePublisher publisher,
+        IConnectionMultiplexer redis,
         WebSocketNodesQueue webSocketNodesQueue,
+        CancellationToken cancellationToken,
         string id
     )
     {
@@ -44,6 +44,7 @@ public static class TaskSockets
         var buffer = new byte[1024];
         WebSocketReceiveResult result;
 
+        var publisher = redis.GetSubscriber();
         try
         {
             do
@@ -53,7 +54,7 @@ public static class TaskSockets
                 {
                     result = await webSocket.ReceiveAsync(
                         new ArraySegment<byte>(buffer),
-                        CancellationToken.None
+                        cancellationToken
                     );
                     data += Encoding.UTF8.GetString(buffer, 0, result.Count);
                 } while (!result.EndOfMessage);
@@ -62,9 +63,12 @@ public static class TaskSockets
                 if (!string.IsNullOrEmpty(data))
                 {
                     // Publicar a mensagem recebida para processamento
+                    var responseData = JsonSerializer.Deserialize<TaskResponseData>(data);
+                    var response = new TaskResponse { NodeId = id, Data = responseData };
+
                     await publisher.PublishAsync(
-                        "message_received",
-                        new { ClientId = id, Message = data }
+                        "post_processing_queue",
+                        JsonSerializer.Serialize(response)
                     );
                 }
             } while (!result.CloseStatus.HasValue);
@@ -76,11 +80,6 @@ public static class TaskSockets
                 "WebSocket error occurred.",
                 CancellationToken.None
             );
-        }
-        finally
-        {
-            // Remover o WebSocket do gerenciador de conexões quando a conexão for fechada
-            await webSocketNodesQueue.RemoveClientAsync(id);
         }
 
         return Results.Ok();

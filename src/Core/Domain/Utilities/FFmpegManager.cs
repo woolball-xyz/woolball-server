@@ -34,6 +34,7 @@ namespace Domain.Utilities
                     Order = segmentNumber.ToString(),
                     StartTime = currentPosition,
                     EndTime = segmentEnd,
+                    IsLast = currentPosition + segmentEnd >= duration,
                 };
 
                 currentPosition = segmentEnd;
