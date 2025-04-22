@@ -3,164 +3,133 @@ using System.Text.Json;
 using Domain.Contracts;
 using StackExchange.Redis;
 
-namespace Application.Logic;
-
-public sealed class SpeechToTextLogic(IConnectionMultiplexer redis) : ISpeechToTextLogic
+namespace Application.Logic
 {
-    private static readonly ConcurrentDictionary<
-        string,
-        ConcurrentDictionary<string, STTChunk>
-    > _orderedResponses = new();
-
-    public async Task ProcessTaskResponseAsync(TaskResponse taskResponse, TaskRequest taskRequest)
+    /// <summary>
+    /// Lógica para processamento de respostas STT,
+    /// implementando quatro cenários conforme specs:
+    /// 1) sem parent, não stream → envia lote sem conclusão
+    /// 2) sem parent, stream      → envia lote e sinaliza conclusão
+    /// 3) com parent, não stream  → acumula, envia no último com conclusão
+    /// 4) com parent, stream      → envia chunks e sinaliza conclusão no último
+    /// </summary>
+    public sealed class SpeechToTextLogic : ISpeechToTextLogic
     {
-        var sttChunk = JsonSerializer.Deserialize<STTChunk>(taskResponse.Data.Response);
-        if (sttChunk == null)
-            return;
+        private readonly IConnectionMultiplexer _redis;
+        private static readonly ConcurrentDictionary<string, List<STTChunk>> _buffers = new();
 
-        bool hasParent = taskRequest.Kwargs.TryGetValue("parent", out var parentObj);
-        string parent = hasParent ? parentObj?.ToString() : string.Empty;
+        public SpeechToTextLogic(IConnectionMultiplexer redis) => _redis = redis;
 
-        bool hasOrder = taskRequest.Kwargs.TryGetValue("order", out var orderObj);
-        string order = hasOrder ? orderObj?.ToString() : string.Empty;
-
-        bool isStreaming = false;
-        if (taskRequest.Kwargs.TryGetValue("stream", out var streamObj))
-        {
-            if (streamObj is bool streamBool)
-                isStreaming = streamBool;
-            else if (streamObj is string streamStr)
-                isStreaming = bool.TryParse(streamStr, out var result) && result;
-        }
-
-        bool isLast = false;
-        if (taskRequest.Kwargs.TryGetValue("last", out var lastObj))
-        {
-            if (lastObj is bool lastBool)
-                isLast = lastBool;
-            else if (lastObj is string lastStr)
-                isLast = bool.TryParse(lastStr, out var result) && result;
-        }
-
-        if (
-            taskRequest.Kwargs.TryGetValue("start", out var segmentStartObj)
-            && double.TryParse(segmentStartObj?.ToString(), out var segmentStart)
+        public async Task ProcessTaskResponseAsync(
+            TaskResponse taskResponse,
+            TaskRequest taskRequest
         )
         {
-            var relativeStart = sttChunk.Timestamp[0];
-            var relativeEnd = sttChunk.Timestamp[1];
+            var stt = taskResponse.Data.Response;
+            Console.WriteLine(
+                $"Processing task response for request : {JsonSerializer.Serialize(taskResponse)}"
+            );
+            if (stt == null)
+                return;
 
-            var absoluteStart = segmentStart + relativeStart;
-            var absoluteEnd = segmentStart + relativeEnd;
-
-            sttChunk.Timestamp = new List<double> { absoluteStart, absoluteEnd };
-        }
-
-        string effectiveRequestId = string.IsNullOrEmpty(parent)
-            ? taskRequest.Id.ToString()
-            : parent;
-
-        if (string.IsNullOrEmpty(parent))
-        {
-            await DispatchResponseAsync(effectiveRequestId, sttChunk, isLast);
-            return;
-        }
-
-        if (!_orderedResponses.TryGetValue(parent, out var orderDict))
-        {
-            orderDict = new ConcurrentDictionary<string, STTChunk>();
-            _orderedResponses[parent] = orderDict;
-        }
-
-        orderDict[order] = sttChunk;
-
-        if (isStreaming)
-        {
-            await TrySendOrderedChunksAsync(parent, parent);
-        }
-        else if (isLast)
-        {
-            await SendAllChunksAsync(parent, parent, true);
-        }
-    }
-
-    private async Task TrySendOrderedChunksAsync(string parent, string requestId)
-    {
-        if (!_orderedResponses.TryGetValue(parent, out var orderDict))
-            return;
-
-        var availableOrders = orderDict
-            .Keys.Select(k => int.TryParse(k, out var num) ? num : int.MaxValue)
-            .OrderBy(n => n)
-            .ToList();
-
-        if (availableOrders.Count == 0)
-            return;
-
-        int expectedOrder = availableOrders[0];
-        List<int> ordersToSend = new();
-
-        foreach (var order in availableOrders)
-        {
-            if (order == expectedOrder)
+            // Ajusta timestamps absolutos em cada Chunk interno
+            if (
+                taskRequest.PrivateArgs.TryGetValue("start", out var startObj)
+                && double.TryParse(startObj?.ToString(), out var baseStart)
+                && stt.Chunks != null
+            )
             {
-                ordersToSend.Add(order);
-                expectedOrder++;
+                foreach (var chunk in stt.Chunks)
+                {
+                    chunk.Timestamp[0] += baseStart;
+                    chunk.Timestamp[1] += baseStart;
+                }
             }
-            else if (order > expectedOrder)
+
+            // Sempre encapsula o objeto STTChunk em uma lista para dispatch
+            var sttChunksList = new List<STTChunk> { stt };
+
+            bool hasParent = taskRequest.PrivateArgs.TryGetValue("parent", out var parentObj);
+            string requestId =
+                hasParent && parentObj != null ? parentObj.ToString()! : taskRequest.Id.ToString();
+
+            bool isStream =
+                taskRequest.Kwargs.TryGetValue("stream", out var streamObj)
+                && bool.TryParse(streamObj?.ToString(), out var s)
+                && s;
+            bool isLast =
+                taskRequest.PrivateArgs.TryGetValue("last", out var lastObj)
+                && bool.TryParse(lastObj?.ToString(), out var l)
+                && l;
+
+            if (!hasParent)
             {
-                break;
+                isLast = true;
+                // Cenário 1 & 2: sem parent
+                await DispatchBatchAsync(
+                    requestId,
+                    sttChunksList,
+                    sendCompletion: isStream && isLast
+                );
+                return;
             }
-        }
 
-        foreach (var order in ordersToSend)
-        {
-            if (orderDict.TryRemove(order.ToString(), out var chunk))
+            if (isStream)
             {
-                await DispatchResponseAsync(requestId, chunk);
+                // Cenário 4: com parent e stream
+                await DispatchBatchAsync(requestId, sttChunksList, sendCompletion: isLast);
             }
-        }
-    }
-
-    private async Task SendAllChunksAsync(
-        string parent,
-        string requestId,
-        bool sendCompletionMessage = false
-    )
-    {
-        if (!_orderedResponses.TryGetValue(parent, out var orderDict))
-            return;
-
-        var allOrders = orderDict
-            .Keys.Select(k => (Key: k, Order: int.TryParse(k, out var num) ? num : int.MaxValue))
-            .OrderBy(pair => pair.Order)
-            .Select(pair => pair.Key)
-            .ToList();
-
-        foreach (var order in allOrders)
-        {
-            if (orderDict.TryRemove(order, out var chunk))
+            else
             {
-                bool isLastChunk = sendCompletionMessage && order == allOrders.Last();
-                await DispatchResponseAsync(requestId, chunk, isLastChunk);
+                // Cenário 3: com parent e não-stream
+                var buffer = _buffers.GetOrAdd(requestId, _ => new List<STTChunk>());
+                lock (buffer)
+                {
+                    buffer.AddRange(sttChunksList);
+                }
+
+                if (isLast)
+                {
+                    List<STTChunk> toSend;
+                    lock (buffer)
+                    {
+                        // Ordena STTChunks pelo timestamp inicial do primeiro Chunk interno
+                        toSend = buffer
+                            .OrderBy(c =>
+                                c.Chunks != null && c.Chunks.Count > 0
+                                    ? c.Chunks[0].Timestamp[0]
+                                    : double.MaxValue
+                            )
+                            .ToList();
+                        buffer.Clear();
+                    }
+                    _buffers.TryRemove(requestId, out _);
+
+                    await DispatchBatchAsync(requestId, toSend, sendCompletion: true);
+                }
             }
         }
 
-        _orderedResponses.TryRemove(parent, out _);
-    }
-
-    private async Task DispatchResponseAsync(string requestId, STTChunk chunk, bool isLast = false)
-    {
-        var subscriber = redis.GetSubscriber();
-        var queueName = $"result_queue_{requestId}";
-
-        var serializedChunk = JsonSerializer.Serialize(chunk);
-        await subscriber.PublishAsync(queueName, serializedChunk);
-
-        if (isLast)
+        /// <summary>
+        /// Publica um batch de STTChunk e opcionalmente sinaliza conclusão.
+        /// </summary>
+        private async Task DispatchBatchAsync(
+            string requestId,
+            IEnumerable<STTChunk> chunks,
+            bool sendCompletion
+        )
         {
-            var completionMessage = JsonSerializer.Serialize(new { Status = "Completed" });
-            await subscriber.PublishAsync(queueName, completionMessage);
+            var subscriber = _redis.GetSubscriber();
+            var queueName = $"result_queue_{requestId}";
+
+            var payload = JsonSerializer.Serialize(chunks);
+            await subscriber.PublishAsync(RedisChannel.Literal(queueName), payload);
+
+            if (sendCompletion)
+            {
+                var completion = JsonSerializer.Serialize(new { Status = "Completed" });
+                await subscriber.PublishAsync(RedisChannel.Literal(queueName), completion);
+            }
         }
     }
 }

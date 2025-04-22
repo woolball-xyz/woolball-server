@@ -28,8 +28,9 @@ public sealed class TaskBusinessLogic(IConnectionMultiplexer redis) : ITaskBusin
     {
         try
         {
+            Console.WriteLine("Publishing preprocessing queue...");
             var subscriber = redis.GetSubscriber();
-            var queueName = "preprocessing_queue";
+            var queueName = RedisChannel.Literal("preprocessing_queue");
             await subscriber.PublishAsync(
                 queueName,
                 System.Text.Json.JsonSerializer.Serialize(taskRequest)
@@ -47,7 +48,7 @@ public sealed class TaskBusinessLogic(IConnectionMultiplexer redis) : ITaskBusin
         try
         {
             var subscriber = redis.GetSubscriber();
-            var queueName = "split_audio_by_silence_queue";
+            var queueName = RedisChannel.Literal("split_audio_by_silence_queue");
             await subscriber.PublishAsync(
                 queueName,
                 System.Text.Json.JsonSerializer.Serialize(taskRequest)
@@ -68,8 +69,11 @@ public sealed class TaskBusinessLogic(IConnectionMultiplexer redis) : ITaskBusin
             var queueName = $"result_queue_{taskRequest.Id}";
 
             // Comportamento para requisições não-streaming
-            var channel = await subscriber.SubscribeAsync(queueName);
+            var channel = await subscriber.SubscribeAsync(RedisChannel.Literal(queueName));
+
+            Console.WriteLine($"[AwaitTaskResultAsync] listening: {queueName}");
             var result = await channel.ReadAsync();
+            Console.WriteLine($"[AwaitTaskResultAsync] Mensagem recebida: {result.Message}");
             await channel.UnsubscribeAsync();
             return result.Message.ToString();
         }
@@ -88,7 +92,6 @@ public sealed class TaskBusinessLogic(IConnectionMultiplexer redis) : ITaskBusin
         System.Collections.Concurrent.ConcurrentQueue<string> messageQueue = null;
         System.Threading.AutoResetEvent messageReceived = null;
         TaskCompletionSource<bool> tcs = null;
-
         try
         {
             var subscriber = redis.GetSubscriber();
@@ -99,7 +102,7 @@ public sealed class TaskBusinessLogic(IConnectionMultiplexer redis) : ITaskBusin
             messageQueue = new System.Collections.Concurrent.ConcurrentQueue<string>();
             messageReceived = new System.Threading.AutoResetEvent(false);
 
-            // Configurar handlers para mensagens
+            // Single combined message handler
             channel.OnMessage(async message =>
             {
                 var messageContent = message.Message.ToString();
@@ -111,12 +114,9 @@ public sealed class TaskBusinessLogic(IConnectionMultiplexer redis) : ITaskBusin
                 {
                     await channel.UnsubscribeAsync();
                     tcs.TrySetResult(true);
+                    return;
                 }
-            });
 
-            channel.OnMessage(message =>
-            {
-                var messageContent = message.Message.ToString();
                 messageQueue.Enqueue(messageContent);
                 messageReceived.Set();
             });

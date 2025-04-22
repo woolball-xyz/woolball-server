@@ -18,7 +18,7 @@ public static class TasksEndPoints
 
         group.WithOpenApi();
 
-        group.MapPost("{task}", handleTask).RequireAuthorization().RequireRateLimiting("fixed");
+        group.MapPost("{task}", handleTask).RequireRateLimiting("fixed");
     }
 
     public static async Task handleTask(
@@ -30,18 +30,6 @@ public static class TasksEndPoints
     {
         try
         {
-            var userId =
-                context.User.Claims.FirstOrDefault()?.Value
-                ?? throw new Exception("User not found");
-            if (string.IsNullOrEmpty(userId))
-            {
-                context.Response.StatusCode = 401;
-                await context.Response.WriteAsync(
-                    JsonSerializer.Serialize(new { error = "Unauthorized access." })
-                );
-                return;
-            }
-
             var form = await context.Request.ReadFormAsync();
             var request = await TaskRequest.Create(form, AvailableModels.SpeechToText);
 
@@ -69,7 +57,6 @@ public static class TasksEndPoints
                 await context.Response.WriteAsync(JsonSerializer.Serialize(new { error = error }));
                 return;
             }
-            request.RequesterId = Guid.Parse(userId);
 
             if (!await logic.PublishPreProcessingQueueAsync(request))
             {
@@ -103,6 +90,8 @@ public static class TasksEndPoints
                     await context.Response.Body.WriteAsync(bytes, 0, bytes.Length);
                     await context.Response.Body.FlushAsync();
                 }
+
+                context.Response.Body.Close();
             }
             else
             {

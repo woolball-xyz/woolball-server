@@ -27,7 +27,8 @@ public static class AudioValidation
 
     public static bool IsWav(string extension)
     {
-        return AudioMimeTypes.ContainsKey(extension.Substring(1));
+        Console.WriteLine(extension);
+        return extension == ".wav";
     }
 
     public static bool ValidateMediaType(string contentType)

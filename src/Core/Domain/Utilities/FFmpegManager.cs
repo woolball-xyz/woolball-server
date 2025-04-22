@@ -12,8 +12,8 @@ namespace Domain.Utilities
     /// </summary>
     public static class FFmpegManager
     {
-        private const double MinSegmentDuration = 20.0; // Minimum segment duration in seconds
-        private const double MaxSegmentDuration = 30.0; // Maximum segment duration in seconds
+        private const double MinSegmentDuration = 20.0;
+        private const double MaxSegmentDuration = 25.0;
 
         public static async IAsyncEnumerable<AudioSegment> BreakAudioFile(string path)
         {
@@ -28,13 +28,18 @@ namespace Domain.Utilities
                 var outputPath = FileUtils.CreateSegmentPath(path, segmentNumber);
                 await CutSegment(path, outputPath, currentPosition, segmentEnd - currentPosition);
 
+                if (segmentEnd >= duration)
+                {
+                    Console.WriteLine("Last segment sent");
+                }
+
                 yield return new AudioSegment
                 {
                     FilePath = outputPath,
                     Order = segmentNumber.ToString(),
                     StartTime = currentPosition,
                     EndTime = segmentEnd,
-                    IsLast = currentPosition + segmentEnd >= duration,
+                    IsLast = segmentEnd >= duration,
                 };
 
                 currentPosition = segmentEnd;
@@ -192,6 +197,7 @@ namespace Domain.Utilities
 
             try
             {
+                Console.WriteLine($"Determining segment end for file: {filePath}");
                 var processStartInfo = new ProcessStartInfo
                 {
                     FileName = "ffprobe",

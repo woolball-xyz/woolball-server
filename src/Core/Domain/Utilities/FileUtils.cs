@@ -2,7 +2,7 @@ namespace Domain.Utilities;
 
 public class FileUtils
 {
-    private static string OutputDir = "Output";
+    private static string OutputDir = "shared/temp";
 
     public static string CreateSegmentPath(string originalFileName, int segmentNumber)
     {

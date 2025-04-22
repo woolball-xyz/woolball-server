@@ -12,7 +12,21 @@ using Presentation;
 
 var builder = WebApplication.CreateBuilder(args);
 
-builder.Services.AddRedis(builder.Configuration).AddApplication();
+// add cors
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy(
+        "CorsPolicy",
+        builder =>
+        {
+            builder
+                .AllowAnyMethod()
+                .AllowAnyHeader()
+                .SetIsOriginAllowed(_ => true)
+                .AllowCredentials();
+        }
+    );
+});
 
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
@@ -30,32 +44,11 @@ builder.Services.AddRateLimiter(_ =>
     )
 );
 
-// var privateKey =
-//     Environment.GetEnvironmentVariable("SecretKey")
-//     ?? builder.Configuration["JwtSettings:SecretKey"]
-//     ?? throw new Exception("Private key is null");
-
-// builder
-//     .Services.AddAuthentication(x =>
-//     {
-//         x.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
-//         x.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
-//     })
-//     .AddJwtBearer(x =>
-//     {
-//         x.RequireHttpsMetadata = false;
-//         x.SaveToken = true;
-//         x.TokenValidationParameters = new TokenValidationParameters
-//         {
-//             IssuerSigningKey = new SymmetricSecurityKey(Encoding.ASCII.GetBytes(privateKey)),
-//             ValidateIssuer = false,
-//             ValidateAudience = false,
-//             ValidateLifetime = false,
-//             ClockSkew = TimeSpan.Zero,
-//         };
-//     });
+builder.Services.AddRedis(builder.Configuration).AddApplication().AddPostProcessingQueue();
 
 var app = builder.Build();
+
+app.UseCors("CorsPolicy");
 
 app.UseRateLimiter();
 

@@ -11,6 +11,8 @@ services:
    build:
     context: ./src/
     dockerfile: ./WebApi/dockerfile.aspnet
+   volumes:
+    - shared-data:/app/shared
    depends_on:
     - redis
    networks:
@@ -26,6 +28,8 @@ services:
    build:
     context: ./src/
     dockerfile: ./WebSocket/dockerfile.aspnet
+   volumes:
+    - shared-data:/app/shared
    depends_on:
     - redis
    networks:
@@ -39,6 +43,8 @@ services:
    build:
     context: ./src/
     dockerfile: ./Background/dockerfile.aspnet
+   volumes:
+    - shared-data:/app/shared
    depends_on:
     - redis
    networks:
@@ -59,7 +65,7 @@ networks:
     driver: bridge
 
 volumes:
-  sqlserver-data:
   redis-data:
+  shared-data:
 
 

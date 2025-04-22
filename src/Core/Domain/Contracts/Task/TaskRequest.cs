@@ -12,7 +12,6 @@ public class TaskRequest
 {
     public Guid Id { get; set; } = Guid.NewGuid();
     public string Task { get; set; }
-    public Guid? RequesterId { get; set; }
 
     public Dictionary<string, object> Kwargs { get; set; }
     public Dictionary<string, object> PrivateArgs { get; set; }
@@ -42,7 +41,7 @@ public class TaskRequest
 
         foreach (var key in form.Keys)
         {
-            request.Kwargs[key] = form[key];
+            request.Kwargs[key] = form[key][0];
         }
 
         if (request.Task == AvailableModels.SpeechToText)
@@ -54,7 +53,13 @@ public class TaskRequest
                 {
                     throw new InvalidOperationException("Invalid audio file type");
                 }
-                var fileName = $"/shared/temp/{Guid.NewGuid()}_{file.FileName}";
+
+                var directoryPath = "./shared/temp/";
+                if (!Directory.Exists(directoryPath))
+                {
+                    Directory.CreateDirectory(directoryPath);
+                }
+                var fileName = $"{directoryPath}{Guid.NewGuid()}_{file.FileName}";
                 using var stream = new FileStream(fileName, FileMode.Create);
                 await file.CopyToAsync(stream);
 
@@ -63,14 +68,14 @@ public class TaskRequest
             //check if input is a url or base64
             if (request.Kwargs.ContainsKey("input") && request.Kwargs["input"] is string input)
             {
-                if (!AudioValidation.ValidateMediaType(Path.GetExtension(input)))
+                if (!AudioValidation.ValidateMediaType(file.ContentType))
                 {
                     throw new InvalidOperationException("Invalid audio file type");
                 }
                 if (input.StartsWith("data:image"))
                 {
                     var bytes = Convert.FromBase64String(input.Split(',')[1]);
-                    var fileName = $"/shared/temp/{Guid.NewGuid()}{Path.GetExtension(input)}";
+                    var fileName = $"./shared/temp/{Guid.NewGuid()}{Path.GetExtension(input)}";
                     File.WriteAllBytes(fileName, bytes);
                     request.Kwargs["input"] = fileName;
                 }
@@ -86,7 +91,7 @@ public class TaskRequest
                     }
                     var bytes = await response.Content.ReadAsByteArrayAsync();
                     var extension = Path.GetExtension(input);
-                    var fileName = $"/shared/temp/{Guid.NewGuid()}{extension}";
+                    var fileName = $"./shared/temp/{Guid.NewGuid()}{extension}";
                     File.WriteAllBytes(fileName, bytes);
                     request.Kwargs["input"] = fileName;
                 }
@@ -119,29 +124,16 @@ public class TaskRequest
             }
         }
 
-        // Check if any of the alternative field groups are valid
-        foreach (var fieldGroup in config.AlternativeFields)
-        {
-            bool isGroupValid = true;
-            foreach (var field in fieldGroup)
-            {
-                if (!this.Kwargs.ContainsKey(field))
-                {
-                    isGroupValid = false;
-                    break;
-                }
-            }
-            if (isGroupValid)
-            {
-                return (true, null);
-            }
-        }
+        return (true, string.Empty);
+    }
 
-        // If no valid alternative field group is found, return error message
-        var alternatives = string.Join(
-            " or ",
-            config.AlternativeFields.Select(group => $"'{string.Join(", ", group)}'")
-        );
-        return (false, $"Required alternative fields missing. Need {alternatives}");
+    public async Task LoadInputIfNeeded()
+    {
+        if (Task == AvailableModels.SpeechToText)
+        {
+            var input = this.Kwargs["input"];
+            var file = await File.ReadAllBytesAsync(input.ToString());
+            this.Kwargs["input"] = file;
+        }
     }
 }

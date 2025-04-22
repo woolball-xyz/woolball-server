@@ -26,7 +26,7 @@ public sealed class PostProcessingQueue(IServiceScopeFactory serviceScopeFactory
                 var consumer = await subscriber.SubscribeAsync(
                     RedisChannel.Literal("post_processing_queue")
                 );
-
+                Console.WriteLine("Postprocessing queue is running...");
                 consumer.OnMessage(async message =>
                 {
                     string? taskId = null;
@@ -34,7 +34,7 @@ public sealed class PostProcessingQueue(IServiceScopeFactory serviceScopeFactory
                     {
                         var messageStr = message.Message.ToString();
 
-                        if (string.IsNullOrEmpty(messageStr))
+                        if (string.IsNullOrWhiteSpace(messageStr))
                             return;
 
                         var taskResponse = JsonSerializer.Deserialize<TaskResponse>(messageStr);
@@ -92,7 +92,7 @@ public sealed class PostProcessingQueue(IServiceScopeFactory serviceScopeFactory
         {
             case "speech-recognition":
                 var speechToTextLogic =
-                    scope.ServiceProvider.GetRequiredService<SpeechToTextLogic>();
+                    scope.ServiceProvider.GetRequiredService<ISpeechToTextLogic>();
                 await speechToTextLogic.ProcessTaskResponseAsync(taskResponse, taskRequest);
                 break;
 

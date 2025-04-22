@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Application.Logic;
+using Contracts.Constants;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using StackExchange.Redis;
@@ -36,7 +37,7 @@ public sealed class PreProcessingQueue(IServiceScopeFactory serviceScopeFactory)
                         if (taskRequest == null)
                             return;
 
-                        if (taskRequest.Task == "speech-to-text")
+                        if (taskRequest.Task == AvailableModels.SpeechToText)
                         {
                             logic.PublishSplitAudioBySilenceQueueAsync(taskRequest);
                         }

@@ -65,7 +65,7 @@ public sealed class SplitAudioBySilenceQueue(IServiceScopeFactory serviceScopeFa
         IConnectionMultiplexer redis =
             scope.ServiceProvider.GetRequiredService<IConnectionMultiplexer>();
 
-        var db = redis.GetDatabase();
+        var subscriber = redis.GetSubscriber();
 
         string? messageStr = message.ToString();
         var request =
@@ -92,25 +92,26 @@ public sealed class SplitAudioBySilenceQueue(IServiceScopeFactory serviceScopeFa
         if (duration <= 0)
             throw new Exception("Invalid duration");
 
+        var channel = RedisChannel.Literal("distribute_queue");
         if (duration < 25)
         {
             request.Kwargs["input"] = wavFilePath;
             request.PrivateArgs["start"] = "0";
             request.PrivateArgs["end"] = duration.ToString();
             request.PrivateArgs["order"] = "1";
-            await db.ListRightPushAsync("distribute_queue", JsonSerializer.Serialize(request));
+            await subscriber.PublishAsync(channel, JsonSerializer.Serialize(request));
             return;
         }
-
+        var parent = request.Id.ToString();
         await foreach (var segment in FFmpegManager.BreakAudioFile(wavFilePath))
         {
             request.Kwargs["input"] = segment.FilePath;
             request.PrivateArgs["start"] = segment.StartTime.ToString();
             request.PrivateArgs["order"] = segment.Order.ToString();
-            request.PrivateArgs["parent"] = request.Id.ToString();
+            request.PrivateArgs["parent"] = parent;
             request.PrivateArgs["last"] = segment.IsLast.ToString();
             request.Id = Guid.NewGuid();
-            await db.ListRightPushAsync("distribute_queue", JsonSerializer.Serialize(request));
+            await subscriber.PublishAsync(channel, JsonSerializer.Serialize(request));
         }
 
         //update taskSession with count of segments waiting to be processed

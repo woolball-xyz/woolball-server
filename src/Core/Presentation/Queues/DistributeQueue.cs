@@ -59,6 +59,10 @@ public sealed class DistributeQueue : BackgroundService
 
                             taskRequest.PrivateArgs["node_id"] = id.ToString();
 
+                            await db.StringSetAsync($"task:{taskRequest.Id}", taskRequestText);
+
+                            await taskRequest.LoadInputIfNeeded();
+
                             var encodedTask = Encoding.UTF8.GetBytes(
                                 JsonSerializer.Serialize(
                                     new
@@ -76,9 +80,6 @@ public sealed class DistributeQueue : BackgroundService
                                 true,
                                 stoppingToken
                             );
-
-                            // preserve task while it is being processed by a node
-                            await db.StringSetAsync($"task:{taskRequest.Id}", taskRequestText);
 
                             var subscriber = redis.GetSubscriber();
 
