@@ -1,22 +1,28 @@
-﻿using System.Collections.Concurrent;
+﻿using System;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
+using System.Linq;
 using System.Text.Json;
+using System.Threading.Tasks;
 using Domain.Contracts;
 using StackExchange.Redis;
 
 namespace Application.Logic
 {
-    /// <summary>
-    /// Lógica para processamento de respostas STT,
-    /// implementando quatro cenários conforme specs:
-    /// 1) sem parent, não stream → envia lote sem conclusão
-    /// 2) sem parent, stream      → envia lote e sinaliza conclusão
-    /// 3) com parent, não stream  → acumula, envia no último com conclusão
-    /// 4) com parent, stream      → envia chunks e sinaliza conclusão no último
-    /// </summary>
     public sealed class SpeechToTextLogic : ISpeechToTextLogic
     {
         private readonly IConnectionMultiplexer _redis;
+
         private static readonly ConcurrentDictionary<string, List<STTChunk>> _buffers = new();
+
+        private class StreamBuffer
+        {
+            public int NextExpected { get; set; } = 1;
+            public SortedDictionary<int, List<STTChunk>> Pending { get; } = new();
+            public int? LastOrder { get; set; }
+        }
+
+        private static readonly ConcurrentDictionary<string, StreamBuffer> _streamBuffers = new();
 
         public SpeechToTextLogic(IConnectionMultiplexer redis) => _redis = redis;
 
@@ -32,7 +38,6 @@ namespace Application.Logic
             if (stt == null)
                 return;
 
-            // Ajusta timestamps absolutos em cada Chunk interno
             if (
                 taskRequest.PrivateArgs.TryGetValue("start", out var startObj)
                 && double.TryParse(startObj?.ToString(), out var baseStart)
@@ -46,7 +51,6 @@ namespace Application.Logic
                 }
             }
 
-            // Sempre encapsula o objeto STTChunk em uma lista para dispatch
             var sttChunksList = new List<STTChunk> { stt };
 
             bool hasParent = taskRequest.PrivateArgs.TryGetValue("parent", out var parentObj);
@@ -64,8 +68,6 @@ namespace Application.Logic
 
             if (!hasParent)
             {
-                isLast = true;
-                // Cenário 1 & 2: sem parent
                 await DispatchBatchAsync(
                     requestId,
                     sttChunksList,
@@ -76,43 +78,79 @@ namespace Application.Logic
 
             if (isStream)
             {
-                // Cenário 4: com parent e stream
-                await DispatchBatchAsync(requestId, sttChunksList, sendCompletion: isLast);
+                if (
+                    taskRequest.PrivateArgs.TryGetValue("order", out var ordObj)
+                    && int.TryParse(ordObj?.ToString(), out var order)
+                )
+                {
+                    var buf = _streamBuffers.GetOrAdd(requestId, _ => new StreamBuffer());
+                    List<STTChunk> toSend = new();
+                    bool sendCompletion = false;
+
+                    lock (buf)
+                    {
+                        if (isLast)
+                            buf.LastOrder = order;
+
+                        if (!buf.Pending.TryGetValue(order, out var list))
+                        {
+                            list = new List<STTChunk>();
+                            buf.Pending[order] = list;
+                        }
+                        list.Add(stt);
+
+                        while (buf.Pending.TryGetValue(buf.NextExpected, out var ready))
+                        {
+                            toSend.AddRange(ready);
+                            buf.Pending.Remove(buf.NextExpected);
+                            buf.NextExpected++;
+                        }
+
+                        if (buf.LastOrder.HasValue && buf.NextExpected > buf.LastOrder.Value)
+                        {
+                            sendCompletion = true;
+                            _streamBuffers.TryRemove(requestId, out _);
+                        }
+                    }
+
+                    if (toSend.Count > 0 || sendCompletion)
+                    {
+                        await DispatchBatchAsync(requestId, toSend, sendCompletion);
+                    }
+                }
+                else
+                {
+                    await DispatchBatchAsync(requestId, sttChunksList, sendCompletion: isLast);
+                }
+
+                return;
             }
-            else
+
+            var buffer = _buffers.GetOrAdd(requestId, _ => new List<STTChunk>());
+            lock (buffer)
             {
-                // Cenário 3: com parent e não-stream
-                var buffer = _buffers.GetOrAdd(requestId, _ => new List<STTChunk>());
+                buffer.AddRange(sttChunksList);
+            }
+
+            if (isLast)
+            {
+                List<STTChunk> toSend;
                 lock (buffer)
                 {
-                    buffer.AddRange(sttChunksList);
+                    toSend = buffer
+                        .OrderBy(c =>
+                            c.Chunks != null && c.Chunks.Count > 0
+                                ? c.Chunks[0].Timestamp[0]
+                                : double.MaxValue
+                        )
+                        .ToList();
+                    buffer.Clear();
                 }
-
-                if (isLast)
-                {
-                    List<STTChunk> toSend;
-                    lock (buffer)
-                    {
-                        // Ordena STTChunks pelo timestamp inicial do primeiro Chunk interno
-                        toSend = buffer
-                            .OrderBy(c =>
-                                c.Chunks != null && c.Chunks.Count > 0
-                                    ? c.Chunks[0].Timestamp[0]
-                                    : double.MaxValue
-                            )
-                            .ToList();
-                        buffer.Clear();
-                    }
-                    _buffers.TryRemove(requestId, out _);
-
-                    await DispatchBatchAsync(requestId, toSend, sendCompletion: true);
-                }
+                _buffers.TryRemove(requestId, out _);
+                await DispatchBatchAsync(requestId, toSend, sendCompletion: true);
             }
         }
 
-        /// <summary>
-        /// Publica um batch de STTChunk e opcionalmente sinaliza conclusão.
-        /// </summary>
         private async Task DispatchBatchAsync(
             string requestId,
             IEnumerable<STTChunk> chunks,
@@ -122,8 +160,11 @@ namespace Application.Logic
             var subscriber = _redis.GetSubscriber();
             var queueName = $"result_queue_{requestId}";
 
-            var payload = JsonSerializer.Serialize(chunks);
-            await subscriber.PublishAsync(RedisChannel.Literal(queueName), payload);
+            if (chunks != null && chunks.Any())
+            {
+                var payload = JsonSerializer.Serialize(chunks);
+                await subscriber.PublishAsync(RedisChannel.Literal(queueName), payload);
+            }
 
             if (sendCompletion)
             {
