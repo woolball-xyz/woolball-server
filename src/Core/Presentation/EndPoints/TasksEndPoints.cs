@@ -98,9 +98,30 @@ public static class TasksEndPoints
                 var response = await logic.AwaitTaskResultAsync(request);
                 if (!string.IsNullOrEmpty(response))
                 {
-                    context.Response.StatusCode = 200;
-                    context.Response.ContentType = "application/json";
-                    await context.Response.WriteAsync(response);
+                    // Verificar se a resposta contém um erro
+                    if (
+                        response.Contains("\"Status\":\"Error\"") || response.Contains("\"error\":")
+                    )
+                    {
+                        context.Response.StatusCode = 500;
+                        context.Response.ContentType = "application/json";
+                        await context.Response.WriteAsync(response);
+                    }
+                    else
+                    {
+                        context.Response.StatusCode = 200;
+                        context.Response.ContentType = "application/json";
+                        await context.Response.WriteAsync(response);
+                    }
+                }
+                else
+                {
+                    context.Response.StatusCode = 500;
+                    await context.Response.WriteAsync(
+                        JsonSerializer.Serialize(
+                            new { error = "Não foi possível obter resposta do serviço" }
+                        )
+                    );
                 }
             }
             return;

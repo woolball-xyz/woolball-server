@@ -11,6 +11,8 @@ namespace Background;
 public sealed class PostProcessingQueue(IServiceScopeFactory serviceScopeFactory)
     : BackgroundService
 {
+    private const int MaxRetryAttempts = 3;
+
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         while (!stoppingToken.IsCancellationRequested)
@@ -47,7 +49,10 @@ public sealed class PostProcessingQueue(IServiceScopeFactory serviceScopeFactory
 
                         if (!request.HasValue)
                         {
-                            //emit redistribute
+                            Console.WriteLine(
+                                $"Task request not found for ID: {taskResponse.Data.RequestId}"
+                            );
+                            return;
                         }
 
                         var taskRequest = JsonSerializer.Deserialize<TaskRequest>(
@@ -55,10 +60,61 @@ public sealed class PostProcessingQueue(IServiceScopeFactory serviceScopeFactory
                         );
                         if (taskRequest == null)
                         {
-                            //emit redistribute
+                            Console.WriteLine(
+                                $"Failed to deserialize task request for ID: {taskResponse.Data.RequestId}"
+                            );
+                            return;
+                        }
+
+                        // Verificar se já existe contagem de tentativas
+                        if (!taskRequest.PrivateArgs.ContainsKey("retry_count"))
+                        {
+                            taskRequest.PrivateArgs["retry_count"] = 0;
                         }
                         taskId = taskRequest.Id.ToString();
-                        await ProcessTaskResponseAsync(taskResponse, taskRequest);
+
+                        try
+                        {
+                            await ProcessTaskResponseAsync(taskResponse, taskRequest);
+                        }
+                        catch (Exception ex)
+                        {
+                            int retryCount = Convert.ToInt32(
+                                taskRequest.PrivateArgs["retry_count"]
+                            );
+
+                            if (retryCount < MaxRetryAttempts)
+                            {
+                                // Incrementar contador de tentativas
+                                taskRequest.PrivateArgs["retry_count"] = retryCount + 1;
+
+                                // Atualizar o taskRequest no Redis
+                                await db.StringSetAsync(
+                                    $"task:{taskRequest.Id}",
+                                    JsonSerializer.Serialize(taskRequest)
+                                );
+
+                                Console.WriteLine(
+                                    $"Retrying task {taskRequest.Id}, attempt {retryCount + 1} of {MaxRetryAttempts}"
+                                );
+
+                                // Redistribuir para a fila de distribuição
+                                var distributeSubscriber = redis.GetSubscriber();
+                                await distributeSubscriber.PublishAsync(
+                                    RedisChannel.Literal("distribute_queue"),
+                                    JsonSerializer.Serialize(taskRequest)
+                                );
+                            }
+                            else
+                            {
+                                Console.WriteLine(
+                                    $"Max retry attempts reached for task {taskRequest.Id}. Error: {ex.Message}"
+                                );
+                                var logic =
+                                    scope.ServiceProvider.GetRequiredService<ITaskBusinessLogic>();
+                                await logic.EmitTaskRequestErrorAsync(taskId);
+                            }
+                        }
                     }
                     catch (Exception e)
                     {
@@ -67,7 +123,7 @@ public sealed class PostProcessingQueue(IServiceScopeFactory serviceScopeFactory
                         {
                             var logic =
                                 scope.ServiceProvider.GetRequiredService<ITaskBusinessLogic>();
-                            logic.EmitTaskRequestErrorAsync(taskId);
+                            await logic.EmitTaskRequestErrorAsync(taskId);
                         }
                     }
                 });

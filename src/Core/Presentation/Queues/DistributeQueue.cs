@@ -90,8 +90,33 @@ public sealed class DistributeQueue : BackgroundService
                     }
                     catch (Exception ex)
                     {
-                        // emit error
-                        Console.WriteLine($"Error deserializing message: {ex.Message}");
+                        Console.WriteLine($"Error in distribute queue: {ex.Message}");
+
+                        // Tentar extrair o ID da tarefa para emitir erro
+                        try
+                        {
+                            if (!string.IsNullOrEmpty(taskRequestText))
+                            {
+                                var taskRequest = JsonSerializer.Deserialize<TaskRequest>(
+                                    taskRequestText
+                                );
+                                if (taskRequest != null)
+                                {
+                                    var logic =
+                                        scope.ServiceProvider.GetRequiredService<Application.Logic.ITaskBusinessLogic>();
+                                    await logic.EmitTaskRequestErrorAsync(
+                                        taskRequest.Id.ToString()
+                                    );
+                                    Console.WriteLine(
+                                        $"Emitido erro para a tarefa {taskRequest.Id}"
+                                    );
+                                }
+                            }
+                        }
+                        catch (Exception innerEx)
+                        {
+                            Console.WriteLine($"Falha ao emitir erro: {innerEx.Message}");
+                        }
                     }
                 });
 

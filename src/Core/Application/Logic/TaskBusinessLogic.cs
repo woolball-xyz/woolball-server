@@ -11,7 +11,12 @@ public sealed class TaskBusinessLogic(IConnectionMultiplexer redis) : ITaskBusin
         {
             var subscriber = redis.GetSubscriber();
             var queueName = $"result_queue_{taskRequestId}";
-            var message = new { taskRequestId, Status = "Error" };
+            var message = new
+            {
+                taskRequestId,
+                Status = "Error",
+                Error = "Falha no processamento após múltiplas tentativas",
+            };
             await subscriber.PublishAsync(
                 queueName,
                 System.Text.Json.JsonSerializer.Serialize(message)
@@ -20,6 +25,7 @@ public sealed class TaskBusinessLogic(IConnectionMultiplexer redis) : ITaskBusin
         }
         catch (Exception ex)
         {
+            Console.WriteLine($"Erro ao emitir erro para a tarefa {taskRequestId}: {ex.Message}");
             return false;
         }
     }
@@ -97,6 +103,12 @@ public sealed class TaskBusinessLogic(IConnectionMultiplexer redis) : ITaskBusin
             var subscriber = redis.GetSubscriber();
             var queueName = $"result_queue_{taskRequest.Id}";
 
+            // Verificar se já existe contagem de tentativas para streaming
+            if (!taskRequest.PrivateArgs.ContainsKey("stream_retry_count"))
+            {
+                taskRequest.PrivateArgs["stream_retry_count"] = 0;
+            }
+
             channel = await subscriber.SubscribeAsync(queueName);
             tcs = new TaskCompletionSource<bool>();
             messageQueue = new System.Collections.Concurrent.ConcurrentQueue<string>();
@@ -107,10 +119,18 @@ public sealed class TaskBusinessLogic(IConnectionMultiplexer redis) : ITaskBusin
             {
                 var messageContent = message.Message.ToString();
 
+                // Verificar se a mensagem contém um erro
                 if (
-                    messageContent.Contains("\"Status\":\"Completed\"")
-                    || messageContent.Contains("\"Status\":\"Error\"")
+                    messageContent.Contains("\"Status\":\"Error\"")
+                    || messageContent.Contains("\"error\":")
                 )
+                {
+                    Console.WriteLine($"Erro detectado durante streaming: {messageContent}");
+                    messageQueue.Enqueue(messageContent);
+                    messageReceived.Set();
+                    tcs.TrySetResult(true); // Finalizar o streaming quando ocorrer um erro
+                }
+                else if (messageContent.Contains("\"Status\":\"Completed\""))
                 {
                     await channel.UnsubscribeAsync();
                     tcs.TrySetResult(true);

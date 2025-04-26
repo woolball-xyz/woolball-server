@@ -41,6 +41,7 @@ public static class TaskSockets
         }
 
         var webSocket = await context.WebSockets.AcceptWebSocketAsync();
+
         await webSocketNodesQueue.AddWebsocketInQueueAsync(id, webSocket);
 
         var buffer = new byte[1024];
@@ -66,7 +67,7 @@ public static class TaskSockets
                 }
                 catch
                 {
-                    // Ignore any errors during ping
+                    // Ignore
                 }
             }
         });
