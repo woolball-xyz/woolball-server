@@ -11,7 +11,7 @@ docker compose up -d
 
 This will start an HTTP server on port 9002 and a WebSocket server on port 9003.
 
-For both to work, the server must be running:
+For both to be used, you need to run the browser node.
 
 https://github.com/woolball-xyz/browser-node
 
