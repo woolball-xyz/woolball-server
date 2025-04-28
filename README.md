@@ -15,5 +15,6 @@ For both to be used, you need to run the browser node.
 
 https://github.com/woolball-xyz/browser-node
 
+### Flow
 
 ![Current Network Status](current.png)
