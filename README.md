@@ -4,8 +4,7 @@
 
 ### Prerequisites
 
-Before running the demo application, you need to build the `browser-node` package and the speech-to-text worker:
-
+Build and run the browser network server with docker compose.
 ```bash
     docker compose up -d
 ```
