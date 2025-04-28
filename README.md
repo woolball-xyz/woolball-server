@@ -6,7 +6,7 @@
 
 Build and run the browser network server with docker compose.
 ```bash
-    docker compose up -d
+docker compose up -d
 ```
 
 This will start an HTTP server on port 9002 and a WebSocket server on port 9003.
