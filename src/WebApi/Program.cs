@@ -60,9 +60,6 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI();
 }
 
-// Configure the HTTP request pipeline.
-// app.UseExceptionHandler();
-
 app.UseHttpsRedirection();
 
 app.Run();

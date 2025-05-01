@@ -1,2 +1,0 @@
-dotnet ef migrations add "FixIndex" --project ../Core/Infrastructure
-dotnet ef database update --project ../Core/Infrastructure
