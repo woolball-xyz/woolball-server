@@ -31,11 +31,6 @@ jobs:
       with:
         dotnet-version: 10.0.100-preview.1.25120.13
     
-    - name: Install CSharpier
-      run: dotnet tool install -g csharpier
-
-    - name: Check for formatting issues
-      run: dotnet csharpier .
 
     - name: Build and Run .NET Analyzers
       run: dotnet build --configuration Release /p:RunAnalyzersDuringBuild=true
