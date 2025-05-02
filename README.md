@@ -28,9 +28,7 @@ This repository contains the open-source **network server** that dispatches jobs
 | **MediaPipe** | Text Generation | [LiteRT Models](https://ai.google.dev/edge/mediapipe/solutions/genai/llm_inference#models) | 🚧 Pending |
 
 
-## How to use
-
-### Quick Start
+## Quick Start
 
 ```bash
 git clone --branch deploy --single-branch --depth 1 https://github.com/woolball-xyz/woolball-server.git
