@@ -32,10 +32,6 @@ public class TaskRequest
 
     public static async Task<TaskRequest> Create(IFormCollection form, string task)
     {
-        if (!AvailableModels.Names.ContainsKey(task))
-        {
-            throw new InvalidOperationException("Invalid task");
-        }
 
         var request = new TaskRequest();
         request.Task = task;
