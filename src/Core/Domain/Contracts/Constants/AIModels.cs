@@ -10,7 +10,7 @@ public static class AvailableModels
 {
     public static readonly string TextGeneration = "text-generation";
     public static readonly string SpeechToText = "speech-recognition";
-    public static readonly Dictionary<string, string> Names =
+    public static readonly Dictionary<string, string> Dict =
         new() { { SpeechToText, "automatic-speech-recognition" } };
 
     public static readonly Dictionary<string, List<string>> Names =
@@ -18,9 +18,9 @@ public static class AvailableModels
 
     public static string GetTaskName(string task)
     {
-        if (Names.ContainsKey(task))
+        if (Dict.ContainsKey(task))
         {
-            return Names[task];
+            return Dict[task];
         }
         return task;
     }

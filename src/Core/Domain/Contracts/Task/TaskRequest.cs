@@ -32,7 +32,7 @@ public class TaskRequest
 
     public static async Task<TaskRequest> Create(IFormCollection form, string task)
     {
-        if (!IsValidTask(task))
+        if (!AvailableModels.Names.ContainsKey(task))
         {
             throw new InvalidOperationException("Invalid task");
         }
