@@ -1,4 +1,6 @@
 # woolball-server 🧶  
+[![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=woolball-xyz_browser-network-server&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=woolball-xyz_browser-network-server)
+
 *Browser-as-a-Server orchestration layer for distributed AI inference*
 
 WoolBall turns **idle browsers into inference nodes**.  
