@@ -10,8 +10,14 @@ public static class AvailableModels
 {
     public static readonly string TextGeneration = "text-generation";
     public static readonly string SpeechToText = "speech-recognition";
-    public static readonly Dictionary<string, string> Dict =
-        new() { { SpeechToText, "automatic-speech-recognition" } };
+    private static readonly IReadOnlyDictionary<string, string> _dict = new Dictionary<
+        string,
+        string
+    >
+    {
+        { SpeechToText, "automatic-speech-recognition" },
+    };
+    public static IReadOnlyDictionary<string, string> Dict => _dict;
 
     public static readonly Dictionary<string, List<string>> Names =
         new() { { SpeechToText, SpeechRecognitionModels.Models.Select(x => x.Model).ToList() } };
