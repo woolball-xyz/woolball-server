@@ -1,8 +1,8 @@
-# WoolBall-Server 🧶  
+# woolball-server 🧶  
 *Browser-as-a-Server orchestration layer for distributed AI inference*
 
 WoolBall turns **idle browsers into inference nodes**.  
-This repository contains the open-source **network server** that dispatches jobs to those nodes; the client/worker SDK lives in [`browser-node`](https://github.com/woolball-xyz/browser-node).
+This repository contains the open-source **network server** that dispatches jobs to those nodes; the client/worker SDK lives in [`woolball-client`](https://github.com/woolball-xyz/woolball-client).
 
 ---
 
@@ -31,10 +31,10 @@ This repository contains the open-source **network server** that dispatches jobs
 ### Quick Start
 
 ```bash
-git clone --branch deploy --single-branch --depth 1 https://github.com/woolball-xyz/browser-network-server.git
+git clone --branch deploy --single-branch --depth 1 https://github.com/woolball-xyz/woolball-server.git
 ```
 ```bash
-cd browser-network-server && docker compose up -d
+cd woolball-server && docker compose up -d
 ```
 
 > To ensure it's working correctly, have at least one client-node open [http://localhost:9000](http://localhost:9000)
@@ -81,10 +81,10 @@ curl -X POST http://localhost:9002/api/v1/speech-recognition \
 For local development, you must use Docker Compose as the services depend on a shared volume for proper operation:
 
 ```bash
-git clone https://github.com/woolball-xyz/browser-network-server.git
+git clone https://github.com/woolball-xyz/woolball-server.git
 ```
 ```bash
-cd browser-network-server && docker compose up --build -d
+cd woolball-server && docker compose up --build -d
 ```
 
 
