@@ -4,7 +4,9 @@
 *Browser-as-a-Server orchestration layer for distributed AI inference*
 
 WoolBall turns **idle browsers into inference nodes**.  
-This repository contains the open-source **network server** that dispatches jobs to those nodes; the client/worker SDK lives in [`woolball-client`](https://github.com/woolball-xyz/woolball-client).
+
+This repository contains the open-source **network server** that dispatches jobs to those nodes; 
+> the client/worker SDK lives in [`woolball-client`](https://github.com/woolball-xyz/woolball-client).
 
 ---
 
