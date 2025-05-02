@@ -26,8 +26,8 @@ This repository contains the open-source **network server** that dispatches jobs
 | **Transformers.js** | Translation | [ONNX Models](https://huggingface.co/models?pipeline_tag=translation&library=transformers.js&sort=trending) | 🚧 Pending |
 | **Transformers.js** | Image-Text-to-Text | [ONNX Models](https://huggingface.co/models?pipeline_tag=image-text-to-text&library=transformers.js&sort=trending) | 🚧 Pending |
 | **Transformers.js** | Text-Generation | [ONNX Models](https://huggingface.co/models?pipeline_tag=text-generation&library=transformers.js&sort=trending) | 🚧 Pending |
-| **WebLLM** | Text Generation | [MLC Models](https://mlc.ai/models) | 🚧 Pending |
-| **MediaPipe** | Text Generation | [LiteRT Models](https://ai.google.dev/edge/mediapipe/solutions/genai/llm_inference#models) | 🚧 Pending |
+| **WebLLM** | Text Generation | [MLC Models](https://mlc.ai/models) | 🌱 Planning |
+| **MediaPipe** | Text Generation | [LiteRT Models](https://ai.google.dev/edge/mediapipe/solutions/genai/llm_inference#models) | 🌱 Planning |
 
 
 ## Quick Start
