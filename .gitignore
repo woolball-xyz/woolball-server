@@ -1,7 +1,0 @@
-/.vscode
-**/bin
-**/obj
-/.vs
-
-
-**/.env.prod
