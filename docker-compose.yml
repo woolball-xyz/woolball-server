@@ -12,7 +12,7 @@ services:
       
   woolball-api:
     image: ghcr.io/woolball-xyz/server-webapi:latest
-    container_name: core-api
+    container_name: woolball-api
     restart: always
     environment:
       - RedisConnection=${REDIS_CONNECTION}
@@ -27,7 +27,7 @@ services:
 
   woolball-websocket:
     image: ghcr.io/woolball-xyz/server-websocket:latest
-    container_name: core-websocket
+    container_name: woolball-websocket
     restart: always
     environment:
       - RedisConnection=${REDIS_CONNECTION}
@@ -42,7 +42,7 @@ services:
 
   woolball-background:
     image: ghcr.io/woolball-xyz/server-background:latest
-    container_name: core-background
+    container_name: woolball-background
     restart: always
     environment:
       - RedisConnection=${REDIS_CONNECTION}
