@@ -32,12 +32,18 @@ public class TaskRequest
 
     public static async Task<TaskRequest> Create(IFormCollection form, string task)
     {
+        if (!IsValidTask(task))
+        {
+            throw new InvalidOperationException("Invalid task");
+        }
+
         var request = new TaskRequest();
         request.Task = task;
         request.Kwargs = new Dictionary<string, object>();
         request.PrivateArgs = new Dictionary<string, object>();
 
         request.Kwargs["type"] = "PROCESS_EVENT";
+        request.Kwargs["task"] = AvailableModels.GetTaskName(task);
 
         foreach (var key in form.Keys)
         {

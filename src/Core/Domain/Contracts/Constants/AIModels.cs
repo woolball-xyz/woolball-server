@@ -10,12 +10,26 @@ public static class AvailableModels
 {
     public static readonly string TextGeneration = "text-generation";
     public static readonly string SpeechToText = "speech-recognition";
+    public static readonly Dictionary<string, string> Names =
+        new()
+        {
+            { SpeechToText, "automatic-speech-recognition" },
+        };
+
     public static readonly Dictionary<string, List<string>> Names =
         new()
         {
-            { TextGeneration, CompletionModels.Models.Select(x => x.Model).ToList() },
             { SpeechToText, SpeechRecognitionModels.Models.Select(x => x.Model).ToList() },
         };
+
+    public static string GetTaskName(string task)
+    {
+        if (Names.ContainsKey(task))
+        {
+            return Names[task];
+        }
+        return task;
+    }
 }
 
 public class CompletionModel : BaseModel { }
