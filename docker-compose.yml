@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   woolball-client:
     image: ghcr.io/woolball-xyz/client-node:latest
