@@ -70,12 +70,13 @@ public class TaskRequest
             //check if input is a url or base64
             if (request.Kwargs.ContainsKey("input") && request.Kwargs["input"] is string input)
             {
-                if (!AudioValidation.ValidateMediaType(file.ContentType))
-                {
-                    throw new InvalidOperationException("Invalid audio file type");
-                }
+
                 if (input.StartsWith("data:image"))
                 {
+                    if (!AudioValidation.ValidateMediaType(Path.GetExtension(input)))
+                    {
+                        throw new InvalidOperationException("Invalid audio file type");
+                    }
                     var bytes = Convert.FromBase64String(input.Split(',')[1]);
                     var fileName = $"./shared/temp/{Guid.NewGuid()}{Path.GetExtension(input)}";
                     File.WriteAllBytes(fileName, bytes);
