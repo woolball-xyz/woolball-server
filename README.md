@@ -1,5 +1,8 @@
 # woolball-server 🧶  
 [![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=woolball-xyz_browser-network-server&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=woolball-xyz_browser-network-server)
+[![Discord](https://img.shields.io/badge/Discord-%235865F2.svg?style=flat&logo=discord&logoColor=white)](https://discord.gg/xbSmMfmwWW)
+
+
 
 *Browser-as-a-Server orchestration layer for distributed AI inference*
 
