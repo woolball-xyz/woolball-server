@@ -71,7 +71,7 @@ namespace Application.Logic
                 await DispatchBatchAsync(
                     requestId,
                     sttChunksList,
-                    sendCompletion: isStream && isLast
+                    sendCompletion: true
                 );
                 return;
             }
