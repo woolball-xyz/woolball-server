@@ -5,12 +5,10 @@
 
 WoolBall turns **idle browsers into inference nodes**.  
 
-![](demo.webp)
-
-
 This repository contains the open-source **network server** that dispatches jobs to those nodes; 
-> the client/worker SDK lives in [`woolball-client`](https://github.com/woolball-xyz/woolball-client).
+> the client lives in [`woolball-client`](https://github.com/woolball-xyz/woolball-client).
 
+[Next steps](https://github.com/woolball-xyz/woolball-server/issues)
 ---
 
 ## Features
