@@ -5,7 +5,9 @@
 
 WoolBall turns **idle browsers into inference nodes**.  
 
-![](demo.mov)
+<video width="320" height="240" controls>
+  <source src="demo.mov" type="video/mp4">
+</video>
 
 
 This repository contains the open-source **network server** that dispatches jobs to those nodes; 
