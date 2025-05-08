@@ -118,11 +118,6 @@ jobs:
          if [ ${{ github.ref }} = 'refs/heads/main' ]; then
           docker compose -f docker-compose.yml build core-api
           docker compose -f docker-compose.yml push core-api
-
-          echo "${{ secrets.GITHUB_TOKEN }}" | gh auth login --with-token
-          gh api --method PATCH /user/packages/container/browser-network-server%2Fcore-api/versions/latest \
-            -H "Accept: application/vnd.github+json" \
-            -f visibility='public'
          else  
           docker compose -f docker-compose.yml build core-api
          fi
@@ -150,11 +145,6 @@ jobs:
          if [ ${{ github.ref }} = 'refs/heads/main' ]; then
           docker compose -f docker-compose.yml build core-websocket
           docker compose -f docker-compose.yml push core-websocket
-
-          echo "${{ secrets.GITHUB_TOKEN }}" | gh auth login --with-token
-          gh api --method PATCH /user/packages/container/browser-network-server%2Fcore-websocket/versions/latest \
-            -H "Accept: application/vnd.github+json" \
-            -f visibility='public'
          else  
           docker compose -f docker-compose.yml build core-websocket
          fi
@@ -182,11 +172,6 @@ jobs:
          if [ ${{ github.ref }} = 'refs/heads/main' ]; then
           docker compose -f docker-compose.yml build core-background
           docker compose -f docker-compose.yml push core-background
-
-          echo "${{ secrets.GITHUB_TOKEN }}" | gh auth login --with-token
-          gh api --method PATCH /user/packages/container/browser-network-server%2Fcore-background/versions/latest \
-            -H "Accept: application/vnd.github+json" \
-            -f visibility='public'
          else  
           docker compose -f docker-compose.yml build core-background
          fi
