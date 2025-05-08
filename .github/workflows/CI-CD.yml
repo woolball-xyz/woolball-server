@@ -117,8 +117,7 @@ jobs:
       run: |
          if [ ${{ github.ref }} = 'refs/heads/main' ]; then
           docker compose -f docker-compose.yml build core-api
-          docker tag $(docker images -q ghcr.io/woolball-xyz/browser-network-server/core-api:latest) ghcr.io/woolball-xyz/browser-network-server/core-api:latest
-          docker push ghcr.io/woolball-xyz/browser-network-server/core-api:latest
+          docker compose -f docker-compose.yml push core-api
 
           echo "${{ secrets.GITHUB_TOKEN }}" | gh auth login --with-token
           gh api --method PATCH /user/packages/container/browser-network-server%2Fcore-api/versions/latest \
@@ -150,8 +149,7 @@ jobs:
       run: |
          if [ ${{ github.ref }} = 'refs/heads/main' ]; then
           docker compose -f docker-compose.yml build core-websocket
-          docker tag $(docker images -q ghcr.io/woolball-xyz/browser-network-server/core-websocket:latest) ghcr.io/woolball-xyz/browser-network-server/core-websocket:latest
-          docker push ghcr.io/woolball-xyz/browser-network-server/core-websocket:latest
+          docker compose -f docker-compose.yml push core-websocket
 
           echo "${{ secrets.GITHUB_TOKEN }}" | gh auth login --with-token
           gh api --method PATCH /user/packages/container/browser-network-server%2Fcore-websocket/versions/latest \
@@ -183,8 +181,7 @@ jobs:
       run: |
          if [ ${{ github.ref }} = 'refs/heads/main' ]; then
           docker compose -f docker-compose.yml build core-background
-          docker tag $(docker images -q ghcr.io/woolball-xyz/browser-network-server/core-background:latest) ghcr.io/woolball-xyz/browser-network-server/core-background:latest
-          docker push ghcr.io/woolball-xyz/browser-network-server/core-background:latest
+          docker compose -f docker-compose.yml push core-background
 
           echo "${{ secrets.GITHUB_TOKEN }}" | gh auth login --with-token
           gh api --method PATCH /user/packages/container/browser-network-server%2Fcore-background/versions/latest \
