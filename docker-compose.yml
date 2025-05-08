@@ -7,6 +7,8 @@ services:
       - ./nginx.conf:/etc/nginx/conf.d/default.conf
     environment:
       - NODE_ENV=production 
+      - VITE_WEBSOCKET_URL=ws://localhost:9003/ws
+      - VITE_API_URL=https://localhost:9002/api/v1 
       
   woolball-api:
     image: ghcr.io/woolball-xyz/server-webapi:latest
