@@ -107,11 +107,23 @@ jobs:
         registry: ghcr.io
         username: ${{ github.actor }}
         password: ${{ secrets.GHCR_TOKEN }}
+    - name: Install GitHub CLI
+      run: |
+        curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | sudo dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg
+        echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null
+        sudo apt update
+        sudo apt install gh
     - name: Build and push Docker image
       run: |
          if [ ${{ github.ref }} = 'refs/heads/main' ]; then
           docker compose -f docker-compose.yml build core-api
-          docker compose -f docker-compose.yml push core-api
+          docker tag $(docker images -q ghcr.io/woolball-xyz/browser-network-server/core-api:latest) ghcr.io/woolball-xyz/browser-network-server/core-api:latest
+          docker push ghcr.io/woolball-xyz/browser-network-server/core-api:latest
+
+          echo "${{ secrets.GITHUB_TOKEN }}" | gh auth login --with-token
+          gh api --method PATCH /user/packages/container/browser-network-server%2Fcore-api/versions/latest \
+            -H "Accept: application/vnd.github+json" \
+            -f visibility='public'
          else  
           docker compose -f docker-compose.yml build core-api
          fi
@@ -128,11 +140,23 @@ jobs:
         registry: ghcr.io
         username: ${{ github.actor }}
         password: ${{ secrets.GHCR_TOKEN }}
+    - name: Install GitHub CLI
+      run: |
+        curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | sudo dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg
+        echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null
+        sudo apt update
+        sudo apt install gh
     - name: Build and push Docker image
       run: |
          if [ ${{ github.ref }} = 'refs/heads/main' ]; then
           docker compose -f docker-compose.yml build core-websocket
-          docker compose -f docker-compose.yml push core-websocket
+          docker tag $(docker images -q ghcr.io/woolball-xyz/browser-network-server/core-websocket:latest) ghcr.io/woolball-xyz/browser-network-server/core-websocket:latest
+          docker push ghcr.io/woolball-xyz/browser-network-server/core-websocket:latest
+
+          echo "${{ secrets.GITHUB_TOKEN }}" | gh auth login --with-token
+          gh api --method PATCH /user/packages/container/browser-network-server%2Fcore-websocket/versions/latest \
+            -H "Accept: application/vnd.github+json" \
+            -f visibility='public'
          else  
           docker compose -f docker-compose.yml build core-websocket
          fi
@@ -149,11 +173,23 @@ jobs:
         registry: ghcr.io
         username: ${{ github.actor }}
         password: ${{ secrets.GHCR_TOKEN }}
+    - name: Install GitHub CLI
+      run: |
+        curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | sudo dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg
+        echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null
+        sudo apt update
+        sudo apt install gh
     - name: Build and push Docker image
       run: |
          if [ ${{ github.ref }} = 'refs/heads/main' ]; then
           docker compose -f docker-compose.yml build core-background
-          docker compose -f docker-compose.yml push core-background
+          docker tag $(docker images -q ghcr.io/woolball-xyz/browser-network-server/core-background:latest) ghcr.io/woolball-xyz/browser-network-server/core-background:latest
+          docker push ghcr.io/woolball-xyz/browser-network-server/core-background:latest
+
+          echo "${{ secrets.GITHUB_TOKEN }}" | gh auth login --with-token
+          gh api --method PATCH /user/packages/container/browser-network-server%2Fcore-background/versions/latest \
+            -H "Accept: application/vnd.github+json" \
+            -f visibility='public'
          else  
           docker compose -f docker-compose.yml build core-background
          fi
