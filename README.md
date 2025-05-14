@@ -78,6 +78,19 @@ curl -X POST http://localhost:9002/api/v1/speech-recognition \
   -F "stream=false"
 ```
 
+### Available fields for Speech to Text
+
+| Field                 | Type                          | Description |
+|-----------------------|-------------------------------|-------------|
+| return_timestamps     | boolean \| 'word'             | Whether to return timestamps or not. Default is `false`. |
+| chunk_length_s        | number                        | The length of audio chunks to process in seconds. Default is `0` (no chunking). |
+| stride_length_s       | number                        | The length of overlap between consecutive audio chunks in seconds. If not provided, defaults to `chunk_length_s / 6`. |
+| force_full_sequences  | boolean                       | Whether to force outputting full sequences or not. Default is `false`. |
+| language              | string                        | The source language. Default is `null`, meaning it should be auto-detected. Use this to potentially improve performance if the source language is known. |
+| task                  | null \| 'transcribe' \| 'translate' | The task to perform. Default is `null`, meaning it should be auto-detected. |
+| num_frames            | number                        | The number of frames in the input audio. |
+
+
 ### Local Development
 
 For local development, you must use Docker Compose as the services depend on a shared volume for proper operation:
