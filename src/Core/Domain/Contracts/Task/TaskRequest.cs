@@ -153,7 +153,7 @@ public class TranslationTaskHandler : ITaskHandler
     {
         return new FieldsConfig
         {
-            MandatoryFields = new List<string> { "input", "source_lang", "target_lang" },
+            MandatoryFields = new List<string> { "input", "srcLang", "tgtLang" },
             OptionalFields = new List<string> { "model" },
         };
     }
@@ -174,7 +174,7 @@ public class TranslationTaskHandler : ITaskHandler
             }
         }
 
-        if (request.Kwargs.ContainsKey("source_lang") && request.Kwargs["source_lang"] is string sourceLang)
+        if (request.Kwargs.ContainsKey("srcLang") && request.Kwargs["srcLang"] is string sourceLang)
         {
             if (!TextValidation.ValidateLanguageCode(sourceLang))
             {
@@ -182,7 +182,7 @@ public class TranslationTaskHandler : ITaskHandler
             }
         }
 
-        if (request.Kwargs.ContainsKey("target_lang") && request.Kwargs["target_lang"] is string targetLang)
+        if (request.Kwargs.ContainsKey("tgtLang") && request.Kwargs["tgtLang"] is string targetLang)
         {
             if (!TextValidation.ValidateLanguageCode(targetLang))
             {
