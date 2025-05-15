@@ -149,10 +149,14 @@ public sealed class TaskBusinessLogic(IConnectionMultiplexer redis) : ITaskBusin
             Console.WriteLine($"[StreamTaskResultAsync] Mensagem recebida: {messageText}");
 
             // Verifica se é uma mensagem de conclusão
-            if (messageText.Contains("\"Status\":\"Completed\"", StringComparison.OrdinalIgnoreCase))
+            if (
+                messageText.Contains("\"Status\":\"Completed\"", StringComparison.OrdinalIgnoreCase)
+            )
             {
-                Console.WriteLine($"[StreamTaskResultAsync] Detected completion message, breaking stream");
-                break;  // Não enviamos a mensagem de status para o cliente, apenas encerramos o stream
+                Console.WriteLine(
+                    $"[StreamTaskResultAsync] Detected completion message, breaking stream"
+                );
+                break; // Não enviamos a mensagem de status para o cliente, apenas encerramos o stream
             }
 
             yield return messageText;

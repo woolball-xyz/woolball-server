@@ -13,4 +13,4 @@ public sealed class TextGenerationResponseData
     public string RequestId { get; set; } = string.Empty;
     public string Error { get; set; } = string.Empty;
     public GenerationResponse Response { get; set; }
-} 
+}

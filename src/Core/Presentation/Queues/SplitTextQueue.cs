@@ -9,8 +9,8 @@ namespace Background;
 
 public sealed class SplitTextQueue(IServiceScopeFactory serviceScopeFactory) : BackgroundService
 {
-    private const int MaxChunkSize = 100; 
-    
+    private const int MaxChunkSize = 100;
+
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         while (!stoppingToken.IsCancellationRequested)
@@ -39,9 +39,7 @@ public sealed class SplitTextQueue(IServiceScopeFactory serviceScopeFactory) : B
 
         var subscriber = redis.GetSubscriber();
 
-        var consumer = await subscriber.SubscribeAsync(
-            RedisChannel.Literal("split_text_queue")
-        );
+        var consumer = await subscriber.SubscribeAsync(RedisChannel.Literal("split_text_queue"));
 
         consumer.OnMessage(
             async (message) =>
@@ -63,7 +61,7 @@ public sealed class SplitTextQueue(IServiceScopeFactory serviceScopeFactory) : B
         using var scope = serviceScopeFactory.CreateScope();
         IConnectionMultiplexer redis =
             scope.ServiceProvider.GetRequiredService<IConnectionMultiplexer>();
-            
+
         var logic = scope.ServiceProvider.GetRequiredService<ITaskBusinessLogic>();
 
         string? messageStr = message.ToString();
@@ -76,10 +74,12 @@ public sealed class SplitTextQueue(IServiceScopeFactory serviceScopeFactory) : B
 
         // Extract input text, handling different possible input types
         string text = ExtractTextInput(request);
-        
+
         if (string.IsNullOrEmpty(text))
         {
-            throw new InvalidOperationException("Missing or invalid input for text processing task");
+            throw new InvalidOperationException(
+                "Missing or invalid input for text processing task"
+            );
         }
 
         if (text.Length <= MaxChunkSize)
@@ -100,7 +100,7 @@ public sealed class SplitTextQueue(IServiceScopeFactory serviceScopeFactory) : B
             await logic.PublishDistributeQueueAsync(request);
         }
     }
-    
+
     // Helper method to extract text input from different possible formats
     private string ExtractTextInput(TaskRequest request)
     {
@@ -108,16 +108,14 @@ public sealed class SplitTextQueue(IServiceScopeFactory serviceScopeFactory) : B
         {
             return string.Empty;
         }
-        
+
         var input = request.Kwargs["input"];
-        
-        // Input deve ser uma string
+
         if (input is string textInput)
         {
             return textInput;
         }
-        
-        // Se não for string, tenta converter para string
+
         return input?.ToString() ?? string.Empty;
     }
 
@@ -130,7 +128,7 @@ public sealed class SplitTextQueue(IServiceScopeFactory serviceScopeFactory) : B
         while (currentPosition < text.Length)
         {
             int endIndex;
-            
+
             if (currentPosition + MaxChunkSize >= text.Length)
             {
                 endIndex = text.Length;
@@ -138,12 +136,12 @@ public sealed class SplitTextQueue(IServiceScopeFactory serviceScopeFactory) : B
             else
             {
                 endIndex = currentPosition + MaxChunkSize;
-                
+
                 while (endIndex > currentPosition && !sentenceEnders.Contains(text[endIndex - 1]))
                 {
                     endIndex--;
                 }
-                
+
                 if (endIndex <= currentPosition)
                 {
                     endIndex = Math.Min(currentPosition + MaxChunkSize, text.Length);
@@ -157,12 +155,12 @@ public sealed class SplitTextQueue(IServiceScopeFactory serviceScopeFactory) : B
             {
                 Text = segmentText,
                 Order = segmentNumber,
-                IsLast = isLast
+                IsLast = isLast,
             };
 
             currentPosition = endIndex;
             segmentNumber++;
-            
+
             await Task.Delay(1); // Small delay to avoid thread blocking
         }
     }
@@ -173,4 +171,4 @@ public class TextSegment
     public required string Text { get; set; }
     public required int Order { get; set; }
     public bool IsLast { get; set; }
-} 
+}

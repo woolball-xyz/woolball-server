@@ -44,7 +44,7 @@ public sealed class PreProcessingQueue(IServiceScopeFactory serviceScopeFactory)
                                 // Audio files need to be split by silence
                                 await logic.PublishSplitAudioBySilenceQueueAsync(taskRequest);
                                 break;
-                                
+
                             case var task when task == AvailableModels.TextToSpeech:
                                 // Ensure input is properly formatted for text-to-speech
                                 if (EnsureValidTextToSpeechInput(taskRequest))
@@ -55,17 +55,22 @@ public sealed class PreProcessingQueue(IServiceScopeFactory serviceScopeFactory)
                                 else
                                 {
                                     // Input validation failed, emit error
-                                    Console.WriteLine($"Invalid input for TTS task: {taskRequest.Id}");
-                                    await logic.EmitTaskRequestErrorAsync(taskRequest.Id.ToString());
+                                    Console.WriteLine(
+                                        $"Invalid input for TTS task: {taskRequest.Id}"
+                                    );
+                                    await logic.EmitTaskRequestErrorAsync(
+                                        taskRequest.Id.ToString()
+                                    );
                                 }
                                 break;
-                                
-                            case var task when task == AvailableModels.Translation || 
-                                               task == AvailableModels.TextGeneration:
+
+                            case var task
+                                when task == AvailableModels.Translation
+                                    || task == AvailableModels.TextGeneration:
                                 // These tasks don't need preprocessing, send directly to distribution
                                 await logic.PublishDistributeQueueAsync(taskRequest);
                                 break;
-                                
+
                             default:
                                 // Unknown task type, emit error
                                 Console.WriteLine($"Unknown task type: {taskRequest.Task}");
@@ -94,7 +99,7 @@ public sealed class PreProcessingQueue(IServiceScopeFactory serviceScopeFactory)
             }
         }
     }
-    
+
     // Ensure the input for text-to-speech is a valid string
     private bool EnsureValidTextToSpeechInput(TaskRequest taskRequest)
     {
@@ -103,10 +108,9 @@ public sealed class PreProcessingQueue(IServiceScopeFactory serviceScopeFactory)
             Console.WriteLine($"[PreProcessingQueue] TTS task missing input field");
             return false;
         }
-        
+
         var input = taskRequest.Kwargs["input"];
-        
-        // Input deve ser uma string, validar que não está vazia
+
         if (input is string textInput)
         {
             if (string.IsNullOrWhiteSpace(textInput))
@@ -114,12 +118,10 @@ public sealed class PreProcessingQueue(IServiceScopeFactory serviceScopeFactory)
                 Console.WriteLine($"[PreProcessingQueue] TTS task has empty input text");
                 return false;
             }
-            
-            // Input é válido
+
             return true;
         }
-        
-        // Se não for string, converter para string
+
         if (input != null)
         {
             string stringValue = input.ToString();
@@ -130,7 +132,7 @@ public sealed class PreProcessingQueue(IServiceScopeFactory serviceScopeFactory)
                 return true;
             }
         }
-        
+
         Console.WriteLine($"[PreProcessingQueue] Invalid input type or null input");
         return false;
     }

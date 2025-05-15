@@ -40,7 +40,7 @@ public static class TextValidation
         // FLORES200 format is typically "xxx_Yyyy" where:
         // - xxx is a 3-letter language code
         // - Yyyy is a 4-letter script code with first letter capitalized
-        
+
         string[] parts = languageCode.Split('_');
         if (parts.Length != 2)
         {
@@ -72,4 +72,4 @@ public static class TextValidation
 
         return true;
     }
-} 
+}

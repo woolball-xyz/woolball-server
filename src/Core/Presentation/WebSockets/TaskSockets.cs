@@ -88,15 +88,21 @@ public static class TaskSockets
 
                 if (!string.IsNullOrEmpty(data))
                 {
-                    Console.WriteLine($"[TaskSockets] Received raw data: {data.Substring(0, Math.Min(100, data.Length))}...");
-                    
+                    Console.WriteLine(
+                        $"[TaskSockets] Received raw data: {data.Substring(0, Math.Min(100, data.Length))}..."
+                    );
+
                     try
                     {
                         var responseBody = JsonSerializer.Deserialize<TaskResponseBody>(
                             data,
                             new JsonSerializerOptions { PropertyNameCaseInsensitive = true }
                         );
-                        var response = new TaskResponse { NodeId = id, Data = responseBody?.Data ?? new TaskResponseData<object>() };
+                        var response = new TaskResponse
+                        {
+                            NodeId = id,
+                            Data = responseBody?.Data ?? new TaskResponseData<object>(),
+                        };
                         Console.WriteLine(
                             $"[ReceiveAsync] Mensagem recebida: {JsonSerializer.Serialize(response)}"
                         );
@@ -107,32 +113,37 @@ public static class TaskSockets
                     }
                     catch (Exception ex)
                     {
-                        Console.WriteLine($"[TaskSockets] Error deserializing WebSocket message: {ex.Message}");
+                        Console.WriteLine(
+                            $"[TaskSockets] Error deserializing WebSocket message: {ex.Message}"
+                        );
                         Console.WriteLine($"[TaskSockets] Attempting fallback deserialization...");
-                        
+
                         try
                         {
                             // Fallback para lidar com diferentes formatos
                             var jsonObj = JsonDocument.Parse(data).RootElement;
-                            
+
                             // Criar um TaskResponseData<object> em vez de TaskResponseData
                             var responseData = new TaskResponseData<object>
                             {
-                                RequestId = jsonObj.TryGetProperty("id", out var idProp) 
-                                    ? idProp.GetString() ?? "" : "",
-                                Error = jsonObj.TryGetProperty("error", out var errorProp) 
-                                    ? errorProp.GetString() ?? "" : "",
+                                RequestId = jsonObj.TryGetProperty("id", out var idProp)
+                                    ? idProp.GetString() ?? ""
+                                    : "",
+                                Error = jsonObj.TryGetProperty("error", out var errorProp)
+                                    ? errorProp.GetString() ?? ""
+                                    : "",
                                 Response = jsonObj.TryGetProperty("response", out var responseProp)
-                                    ? (object)responseProp : null
+                                    ? (object)responseProp
+                                    : null,
                             };
-                            
-                            string responseJson = JsonSerializer.Serialize(new TaskResponse 
-                            { 
-                                NodeId = id, 
-                                Data = responseData 
-                            });
-                            
-                            Console.WriteLine($"[TaskSockets] Fallback response: {responseJson.Substring(0, Math.Min(100, responseJson.Length))}...");
+
+                            string responseJson = JsonSerializer.Serialize(
+                                new TaskResponse { NodeId = id, Data = responseData }
+                            );
+
+                            Console.WriteLine(
+                                $"[TaskSockets] Fallback response: {responseJson.Substring(0, Math.Min(100, responseJson.Length))}..."
+                            );
                             await publisher.PublishAsync(
                                 RedisChannel.Literal("post_processing_queue"),
                                 responseJson
@@ -140,7 +151,9 @@ public static class TaskSockets
                         }
                         catch (Exception fallbackEx)
                         {
-                            Console.WriteLine($"[TaskSockets] Fallback also failed: {fallbackEx.Message}");
+                            Console.WriteLine(
+                                $"[TaskSockets] Fallback also failed: {fallbackEx.Message}"
+                            );
                         }
                     }
                 }

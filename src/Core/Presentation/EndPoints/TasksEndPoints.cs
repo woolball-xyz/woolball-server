@@ -42,7 +42,6 @@ public static class TasksEndPoints
                 return;
             }
 
-
             var (result, error) = request.IsValidFields();
             if (!result)
             {

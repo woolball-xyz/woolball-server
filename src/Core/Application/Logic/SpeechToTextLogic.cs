@@ -32,22 +32,19 @@ namespace Application.Logic
             TaskRequest taskRequest
         )
         {
-            // Obter a resposta, que pode ser de diferentes tipos
             STTChunk stt;
-            
-            // Verificar o tipo da resposta e converter se necessário
+
             if (taskResponse.Data.Response is STTChunk sttr)
             {
                 stt = sttr;
             }
             else
             {
-                // Se não for do tipo esperado, converter via serialização
                 var json = JsonSerializer.Serialize(taskResponse.Data.Response);
                 var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
                 stt = JsonSerializer.Deserialize<STTChunk>(json, options);
             }
-            
+
             Console.WriteLine(
                 $"Processing task response for request : {JsonSerializer.Serialize(taskResponse)}"
             );
@@ -73,18 +70,16 @@ namespace Application.Logic
             string requestId =
                 hasParent && parentObj != null ? parentObj.ToString()! : taskRequest.Id.ToString();
 
-            // Determinar se é uma requisição de streaming
             bool isStream =
                 taskRequest.Kwargs.TryGetValue("stream", out var streamObj)
                 && bool.TryParse(streamObj?.ToString(), out var s)
                 && s;
-                
-            // Se for streaming, registramos no dicionário de streamBuffers para referência futura
+
             if (isStream && !_streamBuffers.ContainsKey(requestId))
             {
                 _streamBuffers.TryAdd(requestId, new StreamBuffer());
             }
-                
+
             bool isLast =
                 taskRequest.PrivateArgs.TryGetValue("last", out var lastObj)
                 && bool.TryParse(lastObj?.ToString(), out var l)
@@ -92,37 +87,29 @@ namespace Application.Logic
 
             if (!hasParent)
             {
-                Console.WriteLine($"Single request (no parent) for {requestId}, stream: {isStream}");
-                
-                // Caso específico: Single request com stream
+                Console.WriteLine(
+                    $"Single request (no parent) for {requestId}, stream: {isStream}"
+                );
+
                 if (isStream)
                 {
                     Console.WriteLine($"Sending single chunk with stream flag for {requestId}");
-                    
-                    // Para streaming, enviamos o chunk e depois o status de completed
-                    // O StreamTaskResultAsync vai capturar o status e encerrar o stream
-                    await DispatchBatchAsync(
-                        requestId,
-                        sttChunksList,
-                        sendCompletion: true  // Importante: enviamos completed para sinalizar o fim
-                    );
+
+                    await DispatchBatchAsync(requestId, sttChunksList, sendCompletion: true);
                 }
                 else
                 {
-                    // Para requisições não-streaming, enviar o chunk e a mensagem de completed
-                    await DispatchBatchAsync(
-                        requestId,
-                        sttChunksList,
-                        sendCompletion: true
-                    );
+                    await DispatchBatchAsync(requestId, sttChunksList, sendCompletion: true);
                 }
                 return;
             }
 
             if (isStream)
             {
-                Console.WriteLine($"Processing streaming request: {requestId}, isLast: {isLast}, hasParent: {hasParent}");
-                
+                Console.WriteLine(
+                    $"Processing streaming request: {requestId}, isLast: {isLast}, hasParent: {hasParent}"
+                );
+
                 if (
                     taskRequest.PrivateArgs.TryGetValue("order", out var ordObj)
                     && int.TryParse(ordObj?.ToString(), out var order)
@@ -157,33 +144,38 @@ namespace Application.Logic
 
                         if (buf.LastOrder.HasValue && buf.NextExpected > buf.LastOrder.Value)
                         {
-                            Console.WriteLine($"All chunks processed for {requestId}, setting completion flag");
+                            Console.WriteLine(
+                                $"All chunks processed for {requestId}, setting completion flag"
+                            );
                             sendCompletion = true;
                             _streamBuffers.TryRemove(requestId, out _);
                         }
                     }
 
-                    // Para streaming com ordem, enviamos os chunks e, se for o último, 
-                    // enviamos o sinal de completado para encerrar o stream
                     if (toSend.Count > 0)
                     {
-                        Console.WriteLine($"Dispatching {toSend.Count} chunks for stream {requestId}");
+                        Console.WriteLine(
+                            $"Dispatching {toSend.Count} chunks for stream {requestId}"
+                        );
                         await DispatchBatchAsync(requestId, toSend, sendCompletion: sendCompletion);
                     }
                     else if (sendCompletion)
                     {
-                        // Mesmo sem chunks, precisamos enviar o status de completado
-                        Console.WriteLine($"Stream {requestId} completed, sending completion status");
-                        await DispatchBatchAsync(requestId, new List<STTChunk>(), sendCompletion: true);
+                        Console.WriteLine(
+                            $"Stream {requestId} completed, sending completion status"
+                        );
+                        await DispatchBatchAsync(
+                            requestId,
+                            new List<STTChunk>(),
+                            sendCompletion: true
+                        );
                     }
                 }
                 else
                 {
                     Console.WriteLine($"Simple streaming for {requestId}, isLast: {isLast}");
-                    // Para streaming simples, enviamos o chunk e o status de completado se for o último
                     await DispatchBatchAsync(requestId, sttChunksList, sendCompletion: isLast);
-                    
-                    // Se foi o último chunk, remover do registro de streamBuffers
+
                     if (isLast)
                     {
                         Console.WriteLine($"Removing streamBuffer for {requestId} (isLast)");
@@ -218,8 +210,7 @@ namespace Application.Logic
                     buffer.Clear();
                 }
                 _buffers.TryRemove(requestId, out _);
-                
-                // Para requisições não-streaming, enviamos a mensagem de completado
+
                 await DispatchBatchAsync(requestId, toSend, sendCompletion: true);
             }
         }

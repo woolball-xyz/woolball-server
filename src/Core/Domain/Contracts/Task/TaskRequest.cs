@@ -1,9 +1,9 @@
-using Contracts.Constants;
-using Microsoft.AspNetCore.Http;
 using System.Collections.Generic;
 using System.IO;
 using System.Net.Http;
 using System.Threading.Tasks;
+using Contracts.Constants;
+using Microsoft.AspNetCore.Http;
 
 public class FieldsConfig
 {
@@ -27,13 +27,14 @@ public interface ITaskHandler
 public static class TaskHandlerFactory
 {
     // Main handlers for official task types
-    private static readonly Dictionary<string, ITaskHandler> _handlers = new()
-    {
-        { AvailableModels.SpeechToText, new SpeechToTextTaskHandler() },
-        { AvailableModels.TextToSpeech, new TextToSpeechTaskHandler() },
-        { AvailableModels.Translation, new TranslationTaskHandler() },
-        { AvailableModels.TextGeneration, new TextGenerationTaskHandler() }
-    };
+    private static readonly Dictionary<string, ITaskHandler> _handlers =
+        new()
+        {
+            { AvailableModels.SpeechToText, new SpeechToTextTaskHandler() },
+            { AvailableModels.TextToSpeech, new TextToSpeechTaskHandler() },
+            { AvailableModels.Translation, new TranslationTaskHandler() },
+            { AvailableModels.TextGeneration, new TextGenerationTaskHandler() },
+        };
 
     public static ITaskHandler GetHandler(string taskType)
     {
@@ -61,7 +62,14 @@ public class SpeechToTextTaskHandler : ITaskHandler
         return new FieldsConfig
         {
             MandatoryFields = new List<string> { "input" },
-            OptionalFields = new List<string> { "model", "language", "return_timestamps", "stream", "dtype" },
+            OptionalFields = new List<string>
+            {
+                "model",
+                "language",
+                "return_timestamps",
+                "stream",
+                "dtype",
+            },
         };
     }
 
@@ -80,7 +88,7 @@ public class SpeechToTextTaskHandler : ITaskHandler
         {
             Directory.CreateDirectory(directoryPath);
         }
-        
+
         // Try to get the file from the form
         IFormFile file = null;
         foreach (var formFile in form.Files)
@@ -91,7 +99,7 @@ public class SpeechToTextTaskHandler : ITaskHandler
                 break;
             }
         }
-        
+
         // Process file if it exists
         if (file != null && file.Length > 0)
         {
@@ -139,7 +147,7 @@ public class TextToSpeechTaskHandler : ITaskHandler
                 throw new InvalidOperationException("Invalid text content for text-to-speech");
             }
         }
-        
+
         return Task.CompletedTask;
     }
 }
@@ -189,7 +197,7 @@ public class TranslationTaskHandler : ITaskHandler
                 throw new InvalidOperationException("Invalid target language code");
             }
         }
-        
+
         return Task.CompletedTask;
     }
 }
@@ -223,7 +231,7 @@ public class TextGenerationTaskHandler : ITaskHandler
                 throw new InvalidOperationException("Invalid prompt content for text generation");
             }
         }
-        
+
         return Task.CompletedTask;
     }
 }
@@ -231,7 +239,7 @@ public class TextGenerationTaskHandler : ITaskHandler
 public class TaskRequest
 {
     public Guid Id { get; set; } = Guid.NewGuid();
-    
+
     // O nome da tarefa (ex: "automatic-speech-recognition")
     public string Task { get; set; }
 
@@ -245,10 +253,10 @@ public class TaskRequest
         {
             throw new InvalidOperationException($"Task '{task}' is not supported");
         }
-        
+
         // Resolve official task name from input (could be an alias)
         string officialTask = GetOfficialTaskType(task);
-        
+
         var request = new TaskRequest();
         request.Task = officialTask; // Set to the official task name
         request.Kwargs = new Dictionary<string, object>();
@@ -282,7 +290,7 @@ public class TaskRequest
         // Get the appropriate handler directly
         // The task should already be the official task name from Create
         var officialTask = GetOfficialTaskType(this.Task);
-        
+
         if (!TaskHandlerFactory.HasHandler(officialTask))
         {
             return (false, "Task not registered");
@@ -308,28 +316,35 @@ public class TaskRequest
         // Get the appropriate handler directly
         // The task should already be the official task name from Create
         var officialTask = GetOfficialTaskType(this.Task);
-        
+
         if (TaskHandlerFactory.HasHandler(officialTask))
         {
             var handler = TaskHandlerFactory.GetHandler(officialTask);
             await handler.LoadInput(this);
         }
     }
-    
+
     // Helper method to get the official task type from any task name or alias
     private static string GetOfficialTaskType(string task)
     {
         // Check if this is a direct match with one of our standard types
-        if (task == AvailableModels.SpeechToText || 
-            task == AvailableModels.TextToSpeech || 
-            task == AvailableModels.Translation || 
-            task == AvailableModels.TextGeneration)
+        if (
+            task == AvailableModels.SpeechToText
+            || task == AvailableModels.TextToSpeech
+            || task == AvailableModels.Translation
+            || task == AvailableModels.TextGeneration
+        )
         {
             return task;
         }
-        
+
         // Handle any potential aliases
-        if (task == "stt" || task == "speech-to-text" || task == "speech-recognition" || task == "speech-recognize")
+        if (
+            task == "stt"
+            || task == "speech-to-text"
+            || task == "speech-recognition"
+            || task == "speech-recognize"
+        )
         {
             return AvailableModels.SpeechToText;
         }
@@ -341,7 +356,7 @@ public class TaskRequest
         {
             return AvailableModels.TextGeneration;
         }
-        
+
         return task; // Return as-is if not recognized
     }
 }

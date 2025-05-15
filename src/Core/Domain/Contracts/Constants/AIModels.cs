@@ -12,7 +12,7 @@ public static class AvailableModels
     public static readonly string SpeechToText = "automatic-speech-recognition";
     public static readonly string TextToSpeech = "text-to-speech";
     public static readonly string Translation = "translation";
-    
+
     private static readonly IReadOnlyDictionary<string, string> _dict = new Dictionary<
         string,
         string
@@ -24,7 +24,7 @@ public static class AvailableModels
         { TextGeneration, TextGeneration },
     };
     public static IReadOnlyDictionary<string, string> Dict => _dict;
-    
+
     // Dictionary for mapping aliases to official task types
     private static readonly IReadOnlyDictionary<string, string> _aliases = new Dictionary<
         string,
@@ -36,21 +36,19 @@ public static class AvailableModels
         { "speech-to-text", SpeechToText },
         { "speech-recognition", SpeechToText },
         { "speech-recognize", SpeechToText },
-        
         // Aliases for text-to-speech
         { "tts", TextToSpeech },
-        
         // Aliases for text-generation
-        { "completions", TextGeneration }
+        { "completions", TextGeneration },
     };
 
     public static readonly Dictionary<string, List<string>> Names =
-        new() 
-        { 
+        new()
+        {
             { SpeechToText, SpeechRecognitionModels.Models.Select(x => x.Model).ToList() },
             { TextGeneration, CompletionModels.Models.Select(x => x.Model).ToList() },
             { TextToSpeech, TextToSpeechModels.Models.Select(x => x.Model).ToList() },
-            { Translation, TranslationModels.Models.Select(x => x.Model).ToList() }
+            { Translation, TranslationModels.Models.Select(x => x.Model).ToList() },
         };
 
     public static string GetTaskName(string task)
@@ -60,10 +58,10 @@ public static class AvailableModels
         {
             return officialTask;
         }
-        
+
         return task;
     }
-    
+
     // Helper method to check if a string is a recognized task or alias
     public static bool IsValidTask(string task)
     {
@@ -72,13 +70,13 @@ public static class AvailableModels
         {
             return true;
         }
-        
+
         // Check if it's an alias
         if (_aliases.TryGetValue(task, out var officialTask))
         {
             return Names.ContainsKey(officialTask);
         }
-        
+
         return false;
     }
 }
@@ -91,7 +89,7 @@ public class SpeechRecognitionModel : BaseModel
     public bool ReturnTimestamps { get; set; } = false;
 }
 
-public class TextToSpeechModel : BaseModel 
+public class TextToSpeechModel : BaseModel
 {
     public string Voice { get; set; } = "default";
 }
@@ -141,7 +139,7 @@ public static class TextToSpeechModels
             {
                 Model = "microsoft/speecht5-tts",
                 Dtype = "fp16",
-                Voice = "default"
+                Voice = "default",
             },
         };
 }
@@ -155,10 +153,19 @@ public static class TranslationModels
             {
                 Model = "facebook/nllb-200-distilled-600M",
                 Dtype = "q4",
-                SupportedLanguages = new List<string> 
-                { 
-                    "en", "es", "fr", "de", "pt", "it", "ru", "zh", "ja", "ko" 
-                }
+                SupportedLanguages = new List<string>
+                {
+                    "en",
+                    "es",
+                    "fr",
+                    "de",
+                    "pt",
+                    "it",
+                    "ru",
+                    "zh",
+                    "ja",
+                    "ko",
+                },
             },
         };
 }
