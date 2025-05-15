@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using Application.Logic;
 using Contracts.Constants;
 using Domain.Contracts;
@@ -38,10 +39,71 @@ public sealed class PostProcessingQueue(IServiceScopeFactory serviceScopeFactory
 
                         if (string.IsNullOrWhiteSpace(messageStr))
                             return;
+                            
+                        Console.WriteLine($"[PostProcessingQueue] Received message: {messageStr.Substring(0, Math.Min(100, messageStr.Length))}...");
 
-                        var taskResponse = JsonSerializer.Deserialize<TaskResponse>(messageStr);
-                        if (taskResponse == null)
-                            return;
+                        TaskResponse taskResponse;
+                        try
+                        {
+                            taskResponse = JsonSerializer.Deserialize<TaskResponse>(messageStr);
+                            if (taskResponse == null)
+                                return;
+                        }
+                        catch (Exception ex)
+                        {
+                            Console.WriteLine($"[PostProcessingQueue] Deserialization error: {ex.Message}. Trying fallback...");
+                            try
+                            {
+                                // Fallback para diferentes formatos
+                                var jsonObj = JsonDocument.Parse(messageStr).RootElement;
+                                
+                                // Tentar extrair o nodeId e requestId
+                                string nodeId = "";
+                                string requestId = "";
+                                
+                                if (jsonObj.TryGetProperty("NodeId", out var nodeIdProp) || 
+                                    jsonObj.TryGetProperty("nodeId", out nodeIdProp))
+                                {
+                                    nodeId = nodeIdProp.GetString() ?? "";
+                                }
+                                
+                                if (jsonObj.TryGetProperty("Data", out var dataProp) || 
+                                    jsonObj.TryGetProperty("data", out dataProp))
+                                {
+                                    if (dataProp.TryGetProperty("RequestId", out var reqIdProp) || 
+                                        dataProp.TryGetProperty("requestId", out reqIdProp))
+                                    {
+                                        requestId = reqIdProp.GetString() ?? "";
+                                    }
+                                }
+                                else if (jsonObj.TryGetProperty("id", out var idProp))
+                                {
+                                    requestId = idProp.GetString() ?? "";
+                                }
+                                
+                                if (string.IsNullOrEmpty(requestId))
+                                {
+                                    Console.WriteLine("[PostProcessingQueue] Could not extract request ID from message");
+                                    return;
+                                }
+                                
+                                // Criar manualmente o TaskResponse
+                                taskResponse = new TaskResponse
+                                {
+                                    NodeId = nodeId,
+                                    Data = new TaskResponseData<object>
+                                    {
+                                        RequestId = requestId,
+                                        Response = jsonObj
+                                    }
+                                };
+                            }
+                            catch (Exception fallbackEx)
+                            {
+                                Console.WriteLine($"[PostProcessingQueue] Fallback also failed: {fallbackEx.Message}");
+                                return;
+                            }
+                        }
 
                         var request = await db.StringGetAsync(
                             $"task:{taskResponse.Data.RequestId}"
@@ -75,17 +137,51 @@ public sealed class PostProcessingQueue(IServiceScopeFactory serviceScopeFactory
 
                         try
                         {
+                            Console.WriteLine($"[PostProcessingQueue] Processing task of type: {taskRequest.Task}");
                             await ProcessTaskResponseAsync(taskResponse, taskRequest);
+                            Console.WriteLine($"[PostProcessingQueue] Successfully processed task {taskRequest.Id} of type {taskRequest.Task}");
                         }
                         catch (Exception ex)
                         {
-                            int retryCount = Convert.ToInt32(
-                                taskRequest.PrivateArgs["retry_count"]
-                            );
+                            Console.WriteLine($"[PostProcessingQueue] Error processing task {taskRequest.Id}: {ex.Message}");
+                            Console.WriteLine($"[PostProcessingQueue] Exception type: {ex.GetType().FullName}");
+                            Console.WriteLine($"[PostProcessingQueue] Stack trace: {ex.StackTrace}");
+                            
+                            // Tratamento seguro para o retry_count
+                            int retryCount = 0;
+                            if (taskRequest.PrivateArgs.TryGetValue("retry_count", out var retryValue))
+                            {
+                                // Verifica o tipo para evitar erros de conversão
+                                if (retryValue is int intValue)
+                                {
+                                    retryCount = intValue;
+                                }
+                                else if (retryValue is JsonElement jsonElement)
+                                {
+                                    // Trata quando o valor é um JsonElement
+                                    if (jsonElement.ValueKind == JsonValueKind.Number)
+                                    {
+                                        retryCount = jsonElement.GetInt32();
+                                    }
+                                    else if (jsonElement.ValueKind == JsonValueKind.String &&
+                                             int.TryParse(jsonElement.GetString(), out var parsedValue))
+                                    {
+                                        retryCount = parsedValue;
+                                    }
+                                }
+                                else if (retryValue != null)
+                                {
+                                    // Tentativa final usando ToString
+                                    if (int.TryParse(retryValue.ToString(), out var parsedValue))
+                                    {
+                                        retryCount = parsedValue;
+                                    }
+                                }
+                            }
 
                             if (retryCount < MaxRetryAttempts)
                             {
-                                // Incrementar contador de tentativas
+                                // Incrementar contador de tentativas e garantir que seja um inteiro
                                 taskRequest.PrivateArgs["retry_count"] = retryCount + 1;
 
                                 // Atualizar o taskRequest no Redis
@@ -146,14 +242,32 @@ public sealed class PostProcessingQueue(IServiceScopeFactory serviceScopeFactory
 
         switch (taskRequest.Task)
         {
-            case "speech-recognition":
+            case var task when task == AvailableModels.SpeechToText:
                 var speechToTextLogic =
                     scope.ServiceProvider.GetRequiredService<ISpeechToTextLogic>();
                 await speechToTextLogic.ProcessTaskResponseAsync(taskResponse, taskRequest);
                 break;
+                
+            case var task when task == AvailableModels.TextToSpeech:
+                var textToSpeechLogic =
+                    scope.ServiceProvider.GetRequiredService<ITextToSpeechLogic>();
+                await textToSpeechLogic.ProcessTaskResponseAsync(taskResponse, taskRequest);
+                break;
+
+            case var task when task == AvailableModels.Translation:
+                var translationLogic =
+                    scope.ServiceProvider.GetRequiredService<ITranslationLogic>();
+                await translationLogic.ProcessTaskResponseAsync(taskResponse, taskRequest);
+                break;
+
+            case var task when task == AvailableModels.TextGeneration:
+                var textGenerationLogic =
+                    scope.ServiceProvider.GetRequiredService<ITextGenerationLogic>();
+                await textGenerationLogic.ProcessTaskResponseAsync(taskResponse, taskRequest);
+                break;
 
             default:
-                break;
+                throw new NotSupportedException($"Unsupported task type: {taskRequest.Task}");
         }
     }
 }

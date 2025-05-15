@@ -31,7 +31,7 @@ public static class TasksEndPoints
         try
         {
             var form = await context.Request.ReadFormAsync();
-            var request = await TaskRequest.Create(form, AvailableModels.SpeechToText);
+            var request = await TaskRequest.Create(form, task);
 
             if (request == null)
             {
@@ -42,14 +42,7 @@ public static class TasksEndPoints
                 return;
             }
 
-            if (!request.IsValidTask())
-            {
-                context.Response.StatusCode = 400;
-                await context.Response.WriteAsync(
-                    JsonSerializer.Serialize(new { error = "Invalid task." })
-                );
-                return;
-            }
+
             var (result, error) = request.IsValidFields();
             if (!result)
             {

@@ -67,6 +67,44 @@ public sealed class TaskBusinessLogic(IConnectionMultiplexer redis) : ITaskBusin
         }
     }
 
+    public async Task<bool> PublishSplitTextQueueAsync(TaskRequest taskRequest)
+    {
+        try
+        {
+            var subscriber = redis.GetSubscriber();
+            var queueName = RedisChannel.Literal("split_text_queue");
+            await subscriber.PublishAsync(
+                queueName,
+                System.Text.Json.JsonSerializer.Serialize(taskRequest)
+            );
+            return true;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Erro ao publicar na fila de divisão de texto: {ex.Message}");
+            return false;
+        }
+    }
+
+    public async Task<bool> PublishDistributeQueueAsync(TaskRequest taskRequest)
+    {
+        try
+        {
+            var subscriber = redis.GetSubscriber();
+            var queueName = RedisChannel.Literal("distribute_queue");
+            await subscriber.PublishAsync(
+                queueName,
+                System.Text.Json.JsonSerializer.Serialize(taskRequest)
+            );
+            return true;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Erro ao publicar na fila de distribuição: {ex.Message}");
+            return false;
+        }
+    }
+
     public async Task<string> AwaitTaskResultAsync(TaskRequest taskRequest)
     {
         try
@@ -94,109 +132,32 @@ public sealed class TaskBusinessLogic(IConnectionMultiplexer redis) : ITaskBusin
         CancellationToken cancellationToken = default
     )
     {
-        ChannelMessageQueue channel = null;
-        System.Collections.Concurrent.ConcurrentQueue<string> messageQueue = null;
-        System.Threading.AutoResetEvent messageReceived = null;
-        TaskCompletionSource<bool> tcs = null;
-        try
-        {
-            var subscriber = redis.GetSubscriber();
-            var queueName = $"result_queue_{taskRequest.Id}";
+        var subscriber = redis.GetSubscriber();
+        var queueName = $"result_queue_{taskRequest.Id}";
 
-            // Verificar se já existe contagem de tentativas para streaming
-            if (!taskRequest.PrivateArgs.ContainsKey("stream_retry_count"))
+        // Comportamento para requisições streaming
+        var channel = await subscriber.SubscribeAsync(RedisChannel.Literal(queueName));
+
+        Console.WriteLine($"[StreamTaskResultAsync] listening: {queueName}");
+        while (!cancellationToken.IsCancellationRequested)
+        {
+            var message = await channel.ReadAsync();
+            if (message.Message.IsNullOrEmpty)
+                continue;
+
+            string messageText = message.Message.ToString();
+            Console.WriteLine($"[StreamTaskResultAsync] Mensagem recebida: {messageText}");
+
+            // Verifica se é uma mensagem de conclusão
+            if (messageText.Contains("\"Status\":\"Completed\"", StringComparison.OrdinalIgnoreCase))
             {
-                taskRequest.PrivateArgs["stream_retry_count"] = 0;
+                Console.WriteLine($"[StreamTaskResultAsync] Detected completion message, breaking stream");
+                break;  // Não enviamos a mensagem de status para o cliente, apenas encerramos o stream
             }
 
-            channel = await subscriber.SubscribeAsync(queueName);
-            tcs = new TaskCompletionSource<bool>();
-            messageQueue = new System.Collections.Concurrent.ConcurrentQueue<string>();
-            messageReceived = new System.Threading.AutoResetEvent(false);
-
-            // Single combined message handler
-            channel.OnMessage(async message =>
-            {
-                var messageContent = message.Message.ToString();
-
-                // Verificar se a mensagem contém um erro
-                if (
-                    messageContent.Contains("\"Status\":\"Error\"")
-                    || messageContent.Contains("\"error\":")
-                )
-                {
-                    Console.WriteLine($"Erro detectado durante streaming: {messageContent}");
-                    messageQueue.Enqueue(messageContent);
-                    messageReceived.Set();
-                    tcs.TrySetResult(true); // Finalizar o streaming quando ocorrer um erro
-                }
-                else if (messageContent.Contains("\"Status\":\"Completed\""))
-                {
-                    await channel.UnsubscribeAsync();
-                    tcs.TrySetResult(true);
-                    return;
-                }
-
-                messageQueue.Enqueue(messageContent);
-                messageReceived.Set();
-            });
-
-            cancellationToken.Register(() =>
-            {
-                tcs.TrySetCanceled();
-                messageReceived.Set();
-            });
-        }
-        catch (Exception ex)
-        {
-            if (channel != null)
-            {
-                await channel.UnsubscribeAsync();
-            }
-            throw new Exception($"Error setting up streaming task result: {ex.Message}");
+            yield return messageText;
         }
 
-        // Processamento de mensagens fora do bloco try-catch
-        while (!tcs.Task.IsCompleted && !cancellationToken.IsCancellationRequested)
-        {
-            if (messageQueue.TryDequeue(out string message))
-            {
-                yield return message;
-            }
-            else
-            {
-                try
-                {
-                    await Task.Run(() => messageReceived.WaitOne(1000), cancellationToken);
-                }
-                catch (Exception ex)
-                {
-                    if (channel != null)
-                    {
-                        await channel.UnsubscribeAsync();
-                    }
-                    throw new Exception($"Error waiting for messages: {ex.Message}");
-                }
-            }
-        }
-
-        // Processar mensagens restantes na fila
-        while (messageQueue.TryDequeue(out string message))
-        {
-            yield return message;
-        }
-
-        // Garantir que o canal seja fechado
-        if (channel != null)
-        {
-            try
-            {
-                await channel.UnsubscribeAsync();
-            }
-            catch
-            {
-                // Ignorar erros ao fechar o canal
-            }
-        }
+        await channel.UnsubscribeAsync();
     }
 }

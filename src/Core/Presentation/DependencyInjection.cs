@@ -16,6 +16,7 @@ public static class DependencyInjection
     {
         services.AddHostedService<PreProcessingQueue>();
         services.AddHostedService<SplitAudioBySilenceQueue>();
+        services.AddHostedService<SplitTextQueue>();
         return services;
     }
 

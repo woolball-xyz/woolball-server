@@ -7,13 +7,16 @@ COPY . .
 RUN dotnet publish -c Release -o /out Background/Background.csproj
 
 
+# ffmpeg install layer
+FROM mcr.microsoft.com/dotnet/aspnet:10.0-preview AS ffmpeg
+RUN apt-get update && apt-get install -y ffmpeg
+
 # final stage/image
 FROM mcr.microsoft.com/dotnet/aspnet:10.0-preview
 
 WORKDIR /app
 COPY --from=build /out ./
-
-RUN apt-get update && apt-get install -y ffmpeg
+COPY --from=ffmpeg /usr/bin/ffmpeg /usr/bin/
 
 ENV ENV_PROJECT_NAME "./Background"
 
