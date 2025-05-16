@@ -15,7 +15,7 @@ public sealed class TaskBusinessLogic(IConnectionMultiplexer redis) : ITaskBusin
             {
                 taskRequestId,
                 Status = "Error",
-                Error = "Falha no processamento após múltiplas tentativas",
+                Error = "Processing failed after multiple attempts"
             };
             await subscriber.PublishAsync(
                 queueName,
@@ -25,7 +25,7 @@ public sealed class TaskBusinessLogic(IConnectionMultiplexer redis) : ITaskBusin
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Erro ao emitir erro para a tarefa {taskRequestId}: {ex.Message}");
+            Console.WriteLine($"Error emitting error for task {taskRequestId}: {ex.Message}");
             return false;
         }
     }
@@ -81,7 +81,7 @@ public sealed class TaskBusinessLogic(IConnectionMultiplexer redis) : ITaskBusin
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Erro ao publicar na fila de divisão de texto: {ex.Message}");
+            Console.WriteLine($"Error publishing to text split queue: {ex.Message}");
             return false;
         }
     }
@@ -100,7 +100,7 @@ public sealed class TaskBusinessLogic(IConnectionMultiplexer redis) : ITaskBusin
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Erro ao publicar na fila de distribuição: {ex.Message}");
+            Console.WriteLine($"Error publishing to distribution queue: {ex.Message}");
             return false;
         }
     }
@@ -112,12 +112,11 @@ public sealed class TaskBusinessLogic(IConnectionMultiplexer redis) : ITaskBusin
             var subscriber = redis.GetSubscriber();
             var queueName = $"result_queue_{taskRequest.Id}";
 
-            // Comportamento para requisições não-streaming
             var channel = await subscriber.SubscribeAsync(RedisChannel.Literal(queueName));
 
             Console.WriteLine($"[AwaitTaskResultAsync] listening: {queueName}");
             var result = await channel.ReadAsync();
-            Console.WriteLine($"[AwaitTaskResultAsync] Mensagem recebida: {result.Message}");
+            Console.WriteLine($"[AwaitTaskResultAsync] Message received: {result.Message}");
             await channel.UnsubscribeAsync();
             return result.Message.ToString();
         }
@@ -135,7 +134,6 @@ public sealed class TaskBusinessLogic(IConnectionMultiplexer redis) : ITaskBusin
         var subscriber = redis.GetSubscriber();
         var queueName = $"result_queue_{taskRequest.Id}";
 
-        // Comportamento para requisições streaming
         var channel = await subscriber.SubscribeAsync(RedisChannel.Literal(queueName));
 
         Console.WriteLine($"[StreamTaskResultAsync] listening: {queueName}");
@@ -146,9 +144,8 @@ public sealed class TaskBusinessLogic(IConnectionMultiplexer redis) : ITaskBusin
                 continue;
 
             string messageText = message.Message.ToString();
-            Console.WriteLine($"[StreamTaskResultAsync] Mensagem recebida: {messageText}");
+            Console.WriteLine($"[StreamTaskResultAsync] Message received: {messageText}");
 
-            // Verifica se é uma mensagem de conclusão
             if (
                 messageText.Contains("\"Status\":\"Completed\"", StringComparison.OrdinalIgnoreCase)
             )
@@ -156,7 +153,7 @@ public sealed class TaskBusinessLogic(IConnectionMultiplexer redis) : ITaskBusin
                 Console.WriteLine(
                     $"[StreamTaskResultAsync] Detected completion message, breaking stream"
                 );
-                break; // Não enviamos a mensagem de status para o cliente, apenas encerramos o stream
+                break;
             }
 
             yield return messageText;

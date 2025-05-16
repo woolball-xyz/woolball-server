@@ -90,7 +90,6 @@ public static class TasksEndPoints
                 var response = await logic.AwaitTaskResultAsync(request);
                 if (!string.IsNullOrEmpty(response))
                 {
-                    // Verificar se a resposta contém um erro
                     if (
                         response.Contains("\"Status\":\"Error\"") || response.Contains("\"error\":")
                     )
@@ -111,7 +110,7 @@ public static class TasksEndPoints
                     context.Response.StatusCode = 500;
                     await context.Response.WriteAsync(
                         JsonSerializer.Serialize(
-                            new { error = "Não foi possível obter resposta do serviço" }
+                            new { error = "Could not get response from service" }
                         )
                     );
                 }

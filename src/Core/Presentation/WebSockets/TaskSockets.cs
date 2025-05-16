@@ -44,8 +44,8 @@ public static class TaskSockets
 
         await webSocketNodesQueue.AddWebsocketInQueueAsync(id, webSocket);
 
-        var buffer = new byte[1024];
-        WebSocketReceiveResult result = null;
+        var buffer = new byte[1024 * 4];
+        WebSocketReceiveResult result;
 
         var publisher = redis.GetSubscriber();
 
@@ -104,7 +104,7 @@ public static class TaskSockets
                             Data = responseBody?.Data ?? new TaskResponseData<object>(),
                         };
                         Console.WriteLine(
-                            $"[ReceiveAsync] Mensagem recebida: {JsonSerializer.Serialize(response)}"
+                            $"[ReceiveAsync] Message received: {JsonSerializer.Serialize(response)}"
                         );
                         await publisher.PublishAsync(
                             RedisChannel.Literal("post_processing_queue"),
@@ -120,10 +120,8 @@ public static class TaskSockets
 
                         try
                         {
-                            // Fallback para lidar com diferentes formatos
                             var jsonObj = JsonDocument.Parse(data).RootElement;
 
-                            // Criar um TaskResponseData<object> em vez de TaskResponseData
                             var responseData = new TaskResponseData<object>
                             {
                                 RequestId = jsonObj.TryGetProperty("id", out var idProp)
@@ -149,10 +147,10 @@ public static class TaskSockets
                                 responseJson
                             );
                         }
-                        catch (Exception fallbackEx)
+                        catch (Exception innerEx)
                         {
                             Console.WriteLine(
-                                $"[TaskSockets] Fallback also failed: {fallbackEx.Message}"
+                                $"[TaskSockets] Error in fallback deserialization: {innerEx.Message}"
                             );
                         }
                     }
@@ -164,7 +162,7 @@ public static class TaskSockets
             await webSocket.CloseAsync(
                 result.CloseStatus.Value,
                 result.CloseStatusDescription,
-                CancellationToken.None
+                cancellationToken
             );
         }
         catch (OperationCanceledException)
@@ -174,7 +172,7 @@ public static class TaskSockets
                 await webSocket.CloseAsync(
                     WebSocketCloseStatus.NormalClosure,
                     "Connection closed due to cancellation",
-                    CancellationToken.None
+                    cancellationToken
                 );
             }
         }
@@ -185,7 +183,7 @@ public static class TaskSockets
                 await webSocket.CloseAsync(
                     WebSocketCloseStatus.InternalServerError,
                     "WebSocket error occurred.",
-                    CancellationToken.None
+                    cancellationToken
                 );
             }
         }

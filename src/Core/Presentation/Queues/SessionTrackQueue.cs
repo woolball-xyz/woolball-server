@@ -78,13 +78,11 @@ public sealed class SessionTrackQueue(IServiceScopeFactory serviceScopeFactory) 
                     }
                 });
 
-                // Keep the connection alive
                 await Task.Delay(Timeout.Infinite, stoppingToken);
             }
             catch (Exception e)
             {
-                Console.WriteLine($"Error in session tracking queue: {e.Message}");
-                // Add delay before retry
+                Console.WriteLine($"Error in session track queue: {e.Message}");
                 await Task.Delay(5000, stoppingToken);
             }
         }
@@ -93,9 +91,7 @@ public sealed class SessionTrackQueue(IServiceScopeFactory serviceScopeFactory) 
     private void StartTaskTracking(Guid taskId, IDatabase db, ISubscriber subscriber)
     {
         var cts = new CancellationTokenSource();
-        _taskTimers[taskId] = cts;
-
-        _taskAttempts.AddOrUpdate(taskId, 1, (_, currentAttempts) => currentAttempts + 1);
+        _taskTimers.TryAdd(taskId, cts);
 
         Task.Run(async () =>
         {
@@ -103,38 +99,31 @@ public sealed class SessionTrackQueue(IServiceScopeFactory serviceScopeFactory) 
             {
                 await Task.Delay(TASK_TIMEOUT_MS, cts.Token);
 
-                if (_taskTimers.TryRemove(taskId, out _))
+                var taskData = await db.StringGetAsync($"task:{taskId}");
+                if (!taskData.IsNullOrEmpty)
                 {
-                    Console.WriteLine(
-                        $"Task {taskId} timed out after {TASK_TIMEOUT_MS / 1000} seconds"
-                    );
+                    int attempts = _taskAttempts.GetOrAdd(taskId, 1);
 
-                    var taskData = await db.StringGetAsync($"task:{taskId}");
-                    if (!taskData.IsNull)
+                    if (attempts < MAX_RETRY_ATTEMPTS)
                     {
-                        int attempts = _taskAttempts.GetOrAdd(taskId, 1);
+                        await subscriber.PublishAsync("distribute_queue", taskData);
+                        Console.WriteLine(
+                            $"Task {taskId} redistributed due to timeout (attempt {attempts} of {MAX_RETRY_ATTEMPTS})"
+                        );
+                    }
+                    else
+                    {
+                        Console.WriteLine(
+                            $"Task {taskId} failed after {MAX_RETRY_ATTEMPTS} attempts"
+                        );
 
-                        if (attempts < MAX_RETRY_ATTEMPTS)
-                        {
-                            await subscriber.PublishAsync("distribute_queue", taskData);
-                            Console.WriteLine(
-                                $"Task {taskId} redistributed due to timeout (attempt {attempts} of {MAX_RETRY_ATTEMPTS})"
-                            );
-                        }
-                        else
-                        {
-                            Console.WriteLine(
-                                $"Task {taskId} failed after {MAX_RETRY_ATTEMPTS} attempts"
-                            );
+                        _taskAttempts.TryRemove(taskId, out _);
 
-                            _taskAttempts.TryRemove(taskId, out _);
+                        var failureMessage = JsonSerializer.Serialize(
+                            new TaskCompletionData { TaskRequestId = taskId, Status = "failed" }
+                        );
 
-                            var failureMessage = JsonSerializer.Serialize(
-                                new TaskCompletionData { TaskRequestId = taskId, Status = "failed" }
-                            );
-
-                            //emit error
-                        }
+                        await subscriber.PublishAsync($"result_queue_{taskId}", failureMessage);
                     }
                 }
             }
