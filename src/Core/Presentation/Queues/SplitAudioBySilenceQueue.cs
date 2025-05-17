@@ -66,6 +66,7 @@ public sealed class SplitAudioBySilenceQueue(IServiceScopeFactory serviceScopeFa
             scope.ServiceProvider.GetRequiredService<IConnectionMultiplexer>();
 
         var subscriber = redis.GetSubscriber();
+        var logic = scope.ServiceProvider.GetRequiredService<ITaskBusinessLogic>();
 
         string? messageStr = message.ToString();
         var request =
@@ -92,14 +93,13 @@ public sealed class SplitAudioBySilenceQueue(IServiceScopeFactory serviceScopeFa
         if (duration <= 0)
             throw new Exception("Invalid duration");
 
-        var channel = RedisChannel.Literal("distribute_queue");
         if (duration < 25)
         {
             request.Kwargs["input"] = wavFilePath;
             request.PrivateArgs["start"] = "0";
             request.PrivateArgs["end"] = duration.ToString();
             request.PrivateArgs["order"] = "1";
-            await subscriber.PublishAsync(channel, JsonSerializer.Serialize(request));
+            await logic.PublishDistributeQueueAsync(request);
             return;
         }
         var parent = request.Id.ToString();
@@ -111,7 +111,7 @@ public sealed class SplitAudioBySilenceQueue(IServiceScopeFactory serviceScopeFa
             request.PrivateArgs["parent"] = parent;
             request.PrivateArgs["last"] = segment.IsLast.ToString();
             request.Id = Guid.NewGuid();
-            await subscriber.PublishAsync(channel, JsonSerializer.Serialize(request));
+            await logic.PublishDistributeQueueAsync(request);
         }
 
         //update taskSession with count of segments waiting to be processed

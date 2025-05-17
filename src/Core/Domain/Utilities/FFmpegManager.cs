@@ -8,7 +8,7 @@ using Domain.Contracts;
 namespace Domain.Utilities
 {
     /// <summary>
-    /// Classe estática para gerenciar operações FFmpeg
+    /// Static class for managing FFmpeg operations
     /// </summary>
     public static class FFmpegManager
     {
@@ -53,47 +53,58 @@ namespace Domain.Utilities
             double maxPosition
         )
         {
-            var startInfo = new ProcessStartInfo
-            {
-                FileName = "ffmpeg",
-                Arguments =
-                    $"-v warning -ss {startPosition} -i \"{fileName}\" -t {maxPosition - startPosition} -af silencedetect=noise=-25dB:d=0.10 -f null -",
-                RedirectStandardError = true,
-                UseShellExecute = false,
-                CreateNoWindow = true,
-            };
-
-            using var process = new Process { StartInfo = startInfo };
-            process.Start();
-
-            double? firstSilence = null;
-
-            while (!process.StandardError.EndOfStream)
-            {
-                var line = await process.StandardError.ReadLineAsync();
-                if (line?.Contains("silence_start") == true)
-                {
-                    var timeStr = line.Split("silence_start: ")[1].Split(' ')[0];
-                    if (double.TryParse(timeStr, out var time))
-                    {
-                        var absoluteTime = startPosition + time;
-                        if (absoluteTime > startPosition)
-                        {
-                            firstSilence = absoluteTime;
-                            break;
-                        }
-                    }
-                }
-            }
+            if (string.IsNullOrEmpty(fileName))
+                throw new ArgumentNullException(nameof(fileName));
 
             try
             {
-                if (!process.HasExited)
-                    process.Kill();
-            }
-            catch { }
+                var processStartInfo = new ProcessStartInfo
+                {
+                    FileName = "ffmpeg",
+                    Arguments = $"-i \"{fileName}\" -af silencedetect=n=-30dB:d=0.5 -f null -",
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                    UseShellExecute = false,
+                    CreateNoWindow = true,
+                };
 
-            return firstSilence;
+                using var process = new Process { StartInfo = processStartInfo };
+                process.Start();
+
+                string output = await process.StandardError.ReadToEndAsync();
+                await process.WaitForExitAsync();
+
+                var matches = Regex.Matches(
+                    output,
+                    @"silence_start: (\d+\.?\d*)",
+                    RegexOptions.Multiline
+                );
+
+                foreach (Match match in matches)
+                {
+                    if (
+                        double.TryParse(
+                            match.Groups[1].Value,
+                            System.Globalization.NumberStyles.Any,
+                            System.Globalization.CultureInfo.InvariantCulture,
+                            out double silencePoint
+                        )
+                    )
+                    {
+                        if (silencePoint > startPosition && silencePoint <= maxPosition)
+                        {
+                            return silencePoint;
+                        }
+                    }
+                }
+
+                return null;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error finding silence point: {ex.Message}");
+                return null;
+            }
         }
 
         private static async Task<double> FindOptimalSegmentEnd(
@@ -111,14 +122,12 @@ namespace Domain.Utilities
                 && currentEnd - currentPosition < MaxSegmentDuration
             )
             {
-                // Procurar próximo ponto de silêncio
                 var nextSilence = await FindSilencePoint(
                     fileName,
                     currentEnd,
                     Math.Min(currentPosition + MaxSegmentDuration, totalDuration)
                 );
 
-                // Se não encontrou silêncio ou atingiu o limite máximo
                 if (
                     !nextSilence.HasValue
                     || nextSilence.Value - currentPosition > MaxSegmentDuration
@@ -128,10 +137,8 @@ namespace Domain.Utilities
                     return end;
                 }
 
-                // Atualizar a duração acumulada
                 accumulatedDuration = nextSilence.Value - currentPosition;
 
-                // Se a duração acumulada é menor que o mínimo, continue procurando
                 if (accumulatedDuration < MinSegmentDuration)
                 {
                     currentEnd = nextSilence.Value;
@@ -156,26 +163,38 @@ namespace Domain.Utilities
             double duration
         )
         {
-            var startInfo = new ProcessStartInfo
+            if (string.IsNullOrEmpty(inputFile))
+                throw new ArgumentNullException(nameof(inputFile));
+
+            if (string.IsNullOrEmpty(outputFile))
+                throw new ArgumentNullException(nameof(outputFile));
+
+            try
             {
-                FileName = "ffmpeg",
-                Arguments =
-                    $"-y -ss {startTime} -i \"{inputFile}\" -t {duration} -c copy -avoid_negative_ts 1 \"{outputFile}\"",
-                RedirectStandardError = true,
-                UseShellExecute = false,
-                CreateNoWindow = true,
-            };
+                var processStartInfo = new ProcessStartInfo
+                {
+                    FileName = "ffmpeg",
+                    Arguments =
+                        $"-i \"{inputFile}\" -ss {startTime} -t {duration} -acodec copy \"{outputFile}\" -y",
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                    UseShellExecute = false,
+                    CreateNoWindow = true,
+                };
 
-            using var process = new Process { StartInfo = startInfo };
-            process.Start();
+                using var process = new Process { StartInfo = processStartInfo };
+                process.Start();
 
-            var error = await process.StandardError.ReadToEndAsync();
+                await process.WaitForExitAsync();
 
-            await process.WaitForExitAsync();
-
-            if (process.ExitCode != 0)
+                if (process.ExitCode != 0)
+                {
+                    throw new Exception("Failed to cut audio segment");
+                }
+            }
+            catch (Exception ex)
             {
-                throw new Exception($"FFmpeg failed to cut segment. Exit code: {process.ExitCode}");
+                throw new Exception($"Error cutting audio segment: {ex.Message}", ex);
             }
         }
 
@@ -234,27 +253,23 @@ namespace Domain.Utilities
         }
 
         /// <summary>
-        /// Verifica se o arquivo de áudio possui faixas de áudio usando ffprobe
+        /// Checks if the audio file has audio tracks using ffprobe
         /// </summary>
-        /// <param name="inputFilePath">Caminho do arquivo de áudio de entrada</param>
-        /// <returns>True se o arquivo possui faixas de áudio, False caso contrário</returns>
+        /// <param name="inputFilePath">Input audio file path</param>
+        /// <returns>True if the file has audio tracks, False otherwise</returns>
         public static async Task<bool> HasAudioTracksAsync(string inputFilePath)
         {
             if (string.IsNullOrEmpty(inputFilePath))
                 throw new ArgumentNullException(
                     nameof(inputFilePath),
-                    "O caminho do arquivo de entrada não pode ser nulo ou vazio"
+                    "Input file path cannot be null or empty"
                 );
 
             if (!File.Exists(inputFilePath))
-                throw new FileNotFoundException(
-                    "O arquivo de entrada não foi encontrado",
-                    inputFilePath
-                );
+                throw new FileNotFoundException("Input file not found", inputFilePath);
 
             try
             {
-                // Configura o processo ffprobe
                 var processStartInfo = new ProcessStartInfo
                 {
                     FileName = "ffprobe",
@@ -266,21 +281,16 @@ namespace Domain.Utilities
                     CreateNoWindow = true,
                 };
 
-                // Inicia o processo
                 using var process = new Process { StartInfo = processStartInfo };
                 process.Start();
 
-                // Captura a saída
                 string output = await process.StandardOutput.ReadToEndAsync();
                 string error = await process.StandardError.ReadToEndAsync();
 
-                // Aguarda a conclusão do processo
                 await process.WaitForExitAsync();
 
-                // Verifica se o processo foi concluído com sucesso e se encontrou faixas de áudio
                 if (process.ExitCode == 0 && !string.IsNullOrWhiteSpace(output))
                 {
-                    // Verifica se a saída contém "audio"
                     return Regex.IsMatch(output, "audio", RegexOptions.IgnoreCase);
                 }
 
@@ -288,44 +298,36 @@ namespace Domain.Utilities
             }
             catch (Exception ex)
             {
-                throw new Exception($"Falha ao verificar faixas de áudio: {ex.Message}", ex);
+                throw new Exception($"Failed to check audio tracks: {ex.Message}", ex);
             }
         }
 
         /// <summary>
-        /// Converte um arquivo de áudio para o formato WAV
+        /// Converts an audio file to WAV format
         /// </summary>
-        /// <param name="inputFilePath">Caminho do arquivo de áudio de entrada</param>
-        /// <returns>Caminho do arquivo WAV convertido</returns>
+        /// <param name="inputFilePath">Input audio file path</param>
+        /// <returns>Path to the converted WAV file</returns>
         public static async Task<string> ConvertToWavAsync(string inputFilePath)
         {
             if (string.IsNullOrEmpty(inputFilePath))
                 throw new ArgumentNullException(
                     nameof(inputFilePath),
-                    "O caminho do arquivo de entrada não pode ser nulo ou vazio"
+                    "Input file path cannot be null or empty"
                 );
 
             if (!File.Exists(inputFilePath))
-                throw new FileNotFoundException(
-                    "O arquivo de entrada não foi encontrado",
-                    inputFilePath
-                );
+                throw new FileNotFoundException("Input file not found", inputFilePath);
 
-            // Verifica se o arquivo possui faixas de áudio antes de prosseguir com a conversão
             bool hasAudioTracks = await HasAudioTracksAsync(inputFilePath);
             if (!hasAudioTracks)
-                throw new InvalidOperationException(
-                    "O arquivo não possui faixas de áudio válidas para conversão"
-                );
+                throw new InvalidOperationException("The file has no valid audio tracks for conversion");
 
-            // Gera o caminho para o arquivo de saída WAV
             string outputDirectory = Path.GetDirectoryName(inputFilePath);
             string outputFileName = $"{Path.GetFileNameWithoutExtension(inputFilePath)}.wav";
             string outputFilePath = Path.Combine(outputDirectory, outputFileName);
 
             try
             {
-                // Configura o processo FFmpeg
                 var processStartInfo = new ProcessStartInfo
                 {
                     FileName = "ffmpeg",
@@ -337,43 +339,34 @@ namespace Domain.Utilities
                     CreateNoWindow = true,
                 };
 
-                // Inicia o processo
                 using var process = new Process { StartInfo = processStartInfo };
                 process.Start();
 
-                // Captura a saída e erro
                 string output = await process.StandardOutput.ReadToEndAsync();
                 string error = await process.StandardError.ReadToEndAsync();
 
-                // Aguarda a conclusão do processo
                 await process.WaitForExitAsync();
 
-                // Verifica se o processo foi concluído com sucesso
                 if (process.ExitCode != 0)
                 {
-                    throw new Exception($"Erro ao converter o arquivo para WAV: {error}");
+                    throw new Exception($"Error converting file to WAV: {error}");
                 }
 
-                // Verifica se o arquivo de saída foi criado
                 if (!File.Exists(outputFilePath))
                 {
-                    throw new Exception("O arquivo WAV não foi gerado");
+                    throw new Exception("WAV file was not generated");
                 }
 
-                // Se a conversão foi bem-sucedida, exclui o arquivo original
                 if (inputFilePath != outputFilePath)
                 {
                     try
                     {
                         File.Delete(inputFilePath);
-                        Console.WriteLine($"Arquivo original excluído: {inputFilePath}");
+                        Console.WriteLine($"Original file deleted: {inputFilePath}");
                     }
                     catch (Exception ex)
                     {
-                        Console.WriteLine(
-                            $"Aviso: Não foi possível excluir o arquivo original: {ex.Message}"
-                        );
-                        // Continua a execução mesmo se não conseguir excluir o arquivo original
+                        Console.WriteLine($"Warning: Could not delete original file: {ex.Message}");
                     }
                 }
 
@@ -381,7 +374,6 @@ namespace Domain.Utilities
             }
             catch (Exception ex)
             {
-                // Limpa o arquivo de saída se ele existir e ocorreu um erro
                 if (File.Exists(outputFilePath))
                 {
                     try
@@ -390,11 +382,10 @@ namespace Domain.Utilities
                     }
                     catch
                     {
-                        // Ignora erros ao tentar excluir o arquivo
                     }
                 }
 
-                throw new Exception($"Falha ao converter o arquivo para WAV: {ex.Message}", ex);
+                throw new Exception($"Failed to convert file to WAV: {ex.Message}", ex);
             }
         }
 

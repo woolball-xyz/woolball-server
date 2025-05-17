@@ -14,7 +14,7 @@ public class WebSocketNodesQueue
         await _queue.Writer.WriteAsync((nodeId, socket));
     }
 
-    public async Task<(string, WebSocket)> GetAvailableWebsocketAsync()
+    public async Task<(string?, WebSocket?)> GetAvailableWebsocketAsync()
     {
         while (await _queue.Reader.WaitToReadAsync())
         {

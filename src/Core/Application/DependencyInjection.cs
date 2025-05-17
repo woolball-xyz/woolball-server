@@ -10,6 +10,9 @@ public static class DependencyInjection
     {
         services.AddScoped<ITaskBusinessLogic, TaskBusinessLogic>();
         services.AddScoped<ISpeechToTextLogic, SpeechToTextLogic>();
+        services.AddScoped<ITextToSpeechLogic, TextToSpeechLogic>();
+        services.AddScoped<ITextGenerationLogic, TextGenerationLogic>();
+        services.AddScoped<ITranslationLogic, TranslationLogic>();
         return services;
     }
 }

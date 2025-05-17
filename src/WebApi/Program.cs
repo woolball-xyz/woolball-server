@@ -44,7 +44,7 @@ builder.Services.AddRateLimiter(_ =>
     )
 );
 
-builder.Services.AddRedis(builder.Configuration).AddApplication().AddPostProcessingQueue();
+builder.Services.AddRedis(builder.Configuration).AddApplication();
 
 var app = builder.Build();
 

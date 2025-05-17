@@ -13,7 +13,6 @@ public static class WebSocketExtensions
     )
     {
         services.AddSingleton<WebSocketNodesQueue>();
-        // Registrar o DistributeQueue como um serviço hospedado
         services.AddHostedService<DistributeQueue>();
 
         return services;
