@@ -1,7 +1,13 @@
+using System;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
+using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using System.Threading;
+using System.Threading.Tasks;
 using Domain.Contracts;
+using Domain.Utilities;
 using StackExchange.Redis;
 
 namespace Application.Logic;
@@ -9,7 +15,15 @@ namespace Application.Logic;
 public sealed class TextToSpeechLogic : ITextToSpeechLogic
 {
     private readonly IConnectionMultiplexer _redis;
-    private static readonly ConcurrentDictionary<string, List<TTSResponse>> _buffers = new();
+
+    private class StreamBuffer
+    {
+        public int NextExpected { get; set; } = 1;
+        public SortedDictionary<int, List<TTSResponse>> Pending { get; } = new();
+        public int? LastOrder { get; set; }
+    }
+
+    private static readonly ConcurrentDictionary<string, StreamBuffer> _streamBuffers = new();
 
     public TextToSpeechLogic(IConnectionMultiplexer redis) => _redis = redis;
 
@@ -18,28 +32,209 @@ public sealed class TextToSpeechLogic : ITextToSpeechLogic
         try
         {
             var requestId = taskResponse.Data.RequestId;
-            Console.WriteLine(
-                $"[TextToSpeechLogic] Processing TTS response for request {requestId}"
-            );
+            Console.WriteLine($"[TextToSpeechLogic] Processing TTS response for request {requestId}");
+
+            TTSResponse tts = ExtractTTSResponse(taskResponse.Data.Response);
+            if (tts == null || string.IsNullOrEmpty(tts.AudioBase64))
+            {
+                Console.WriteLine($"[TextToSpeechLogic] Warning: Empty audio data in response");
+                tts = new TTSResponse
+                {
+                    AudioBase64 = "",
+                    Format = "wav",
+                    SampleRate = 16000,
+                };
+            }
+
+            var ttsResponseList = new List<TTSResponse> { tts };
 
             bool hasParent = taskRequest.PrivateArgs.TryGetValue("parent", out var parentObj);
             string responseQueueId = hasParent && parentObj != null ? parentObj.ToString()! : taskRequest.Id.ToString();
             Console.WriteLine($"[TextToSpeechLogic] Using queue ID: {responseQueueId} (hasParent: {hasParent})");
 
-            if (hasParent && parentObj is string parentId)
+            bool isStream = taskRequest.Kwargs.TryGetValue("stream", out var streamObj)
+                && bool.TryParse(streamObj?.ToString(), out var s)
+                && s;
+
+            if (isStream && !_streamBuffers.ContainsKey(responseQueueId))
             {
-                Console.WriteLine($"[TextToSpeechLogic] Processing as chunk for parent {parentId}");
-                await ProcessChunkResponseAsync(taskResponse, taskRequest, parentId, responseQueueId);
-            }
-            else
-            {
-                Console.WriteLine($"[TextToSpeechLogic] Processing as single response");
-                await ProcessSingleResponseAsync(taskResponse, taskRequest, responseQueueId);
+                _streamBuffers.TryAdd(responseQueueId, new StreamBuffer());
             }
 
-            Console.WriteLine(
-                $"[TextToSpeechLogic] Successfully completed processing for request {requestId}"
-            );
+            bool isLast = taskRequest.PrivateArgs.TryGetValue("last", out var lastObj)
+                && bool.TryParse(lastObj?.ToString(), out var l)
+                && l;
+
+            if (!hasParent)
+            {
+                Console.WriteLine($"[TextToSpeechLogic] Single request (no parent) for {responseQueueId}, stream: {isStream}");
+
+                if (isStream)
+                {
+                    Console.WriteLine($"[TextToSpeechLogic] Sending single chunk with stream flag for {responseQueueId}");
+                }
+                
+                await DispatchBatchAsync(responseQueueId, ttsResponseList, sendCompletion: true);
+                return;
+            }
+
+            if (isStream)
+            {
+                Console.WriteLine($"[TextToSpeechLogic] Processing streaming request: {responseQueueId}, isLast: {isLast}, hasParent: {hasParent}");
+
+                if (taskRequest.PrivateArgs.TryGetValue("order", out var ordObj) && 
+                    int.TryParse(ordObj?.ToString(), out var streamOrder))
+                {
+                    Console.WriteLine($"[TextToSpeechLogic] Streaming with order: {streamOrder}");
+                    var buf = _streamBuffers.GetOrAdd(responseQueueId, _ => new StreamBuffer());
+                    List<TTSResponse> streamToSend = new();
+                    bool sendCompletion = false;
+
+                    lock (buf)
+                    {
+                        if (isLast)
+                        {
+                            Console.WriteLine($"[TextToSpeechLogic] Setting LastOrder to {streamOrder} for {responseQueueId}");
+                            buf.LastOrder = streamOrder;
+                        }
+
+                        if (!buf.Pending.TryGetValue(streamOrder, out var list))
+                        {
+                            list = new List<TTSResponse>();
+                            buf.Pending[streamOrder] = list;
+                        }
+                        list.Add(tts);
+
+                        while (buf.Pending.TryGetValue(buf.NextExpected, out var ready))
+                        {
+                            streamToSend.AddRange(ready);
+                            buf.Pending.Remove(buf.NextExpected);
+                            buf.NextExpected++;
+                        }
+
+                        if (buf.LastOrder.HasValue && buf.NextExpected > buf.LastOrder.Value)
+                        {
+                            Console.WriteLine($"[TextToSpeechLogic] All chunks processed for {responseQueueId}, setting completion flag");
+                            sendCompletion = true;
+                            _streamBuffers.TryRemove(responseQueueId, out _);
+                        }
+                    }
+
+                    if (streamToSend.Count > 0)
+                    {
+                        Console.WriteLine($"[TextToSpeechLogic] Dispatching {streamToSend.Count} chunks for stream {responseQueueId}");
+                        await DispatchBatchAsync(responseQueueId, streamToSend, sendCompletion: sendCompletion);
+                    }
+                    else if (sendCompletion)
+                    {
+                        Console.WriteLine($"[TextToSpeechLogic] Stream {responseQueueId} completed, sending completion status");
+                        await DispatchBatchAsync(responseQueueId, new List<TTSResponse>(), sendCompletion: true);
+                    }
+                }
+                else
+                {
+                    Console.WriteLine($"[TextToSpeechLogic] Simple streaming for {responseQueueId}, isLast: {isLast}");
+                    
+                    var simpleBuffer = _streamBuffers.GetOrAdd(responseQueueId, _ => new StreamBuffer());
+                    
+                    int simpleOrder;
+                    lock (simpleBuffer)
+                    {
+                        simpleOrder = simpleBuffer.NextExpected++;
+                    }
+                    
+                    List<TTSResponse> simpleToSend = new();
+                    bool simpleSendCompletion = false;
+                    
+                    lock (simpleBuffer)
+                    {
+                        if (isLast)
+                        {
+                            Console.WriteLine($"[TextToSpeechLogic] Setting LastOrder to {simpleOrder} for simple streaming {responseQueueId}");
+                            simpleBuffer.LastOrder = simpleOrder;
+                        }
+                        
+                        simpleToSend.Add(tts);
+                        
+                        if (isLast)
+                        {
+                            simpleSendCompletion = true;
+                            _streamBuffers.TryRemove(responseQueueId, out _);
+                            Console.WriteLine($"[TextToSpeechLogic] Removing streamBuffer for {responseQueueId} (isLast)");
+                        }
+                    }
+                    
+                    await DispatchBatchAsync(responseQueueId, simpleToSend, sendCompletion: simpleSendCompletion);
+                }
+
+                return;
+            }
+
+            Console.WriteLine($"[TextToSpeechLogic] Non-streaming batch for {responseQueueId}, isLast: {isLast}");
+            
+            var batchBuffer = _streamBuffers.GetOrAdd(responseQueueId, _ => new StreamBuffer());
+            
+            int batchOrder = 1;
+            if (taskRequest.PrivateArgs.TryGetValue("order", out var batchOrderObj) && 
+                int.TryParse(batchOrderObj?.ToString(), out batchOrder))
+            {
+                Console.WriteLine($"[TextToSpeechLogic] Got chunk with order {batchOrder} for {responseQueueId}");
+            }
+            
+            bool shouldSendResponse = false;
+            List<TTSResponse> batchToSend = new List<TTSResponse>();
+            
+            lock (batchBuffer)
+            {
+                if (isLast)
+                {
+                    Console.WriteLine($"[TextToSpeechLogic] Setting LastOrder to {batchOrder} for {responseQueueId}");
+                    batchBuffer.LastOrder = batchOrder;
+                }
+                
+                if (!batchBuffer.Pending.TryGetValue(batchOrder, out var list))
+                {
+                    list = new List<TTSResponse>();
+                    batchBuffer.Pending[batchOrder] = list;
+                }
+                list.AddRange(ttsResponseList);
+                
+                if (batchBuffer.LastOrder.HasValue)
+                {
+                    bool hasAllChunks = true;
+                    for (int i = 1; i <= batchBuffer.LastOrder.Value; i++)
+                    {
+                        if (!batchBuffer.Pending.ContainsKey(i))
+                        {
+                            hasAllChunks = false;
+                            Console.WriteLine($"[TextToSpeechLogic] Missing chunk {i} for {responseQueueId}, waiting");
+                            break;
+                        }
+                    }
+                    
+                    if (hasAllChunks)
+                    {
+                        Console.WriteLine($"[TextToSpeechLogic] All chunks received for {responseQueueId}, sending final response");
+                        
+                        for (int i = 1; i <= batchBuffer.LastOrder.Value; i++)
+                        {
+                            if (batchBuffer.Pending.TryGetValue(i, out var chunks))
+                            {
+                                batchToSend.AddRange(chunks);
+                            }
+                        }
+                        
+                        batchBuffer.Pending.Clear();
+                        _streamBuffers.TryRemove(responseQueueId, out _);
+                        shouldSendResponse = true;
+                    }
+                }
+            }
+            
+            if (shouldSendResponse && batchToSend.Any())
+            {
+                await DispatchBatchAsync(responseQueueId, batchToSend, sendCompletion: true);
+            }
         }
         catch (Exception ex)
         {
@@ -54,291 +249,83 @@ public sealed class TextToSpeechLogic : ITextToSpeechLogic
                 string responseQueueId = hasParent && parentObj != null ? parentObj.ToString()! : taskRequest.Id.ToString();
                 var resultQueueName = $"result_queue_{responseQueueId}";
 
-                bool isChunkedResponse = hasParent;
-
                 Console.WriteLine($"[TextToSpeechLogic] Sending error response to queue {resultQueueName}");
 
-                if (isChunkedResponse)
-                {
-                    await subscriber.PublishAsync(
-                        resultQueueName,
-                        JsonSerializer.Serialize(new List<TTSResponse>())
-                    );
-                }
-                else
-                {
-                    await subscriber.PublishAsync(
-                        resultQueueName,
-                        JsonSerializer.Serialize(
-                            new TTSResponse
-                            {
-                                AudioBase64 = "",
-                                Format = "wav",
-                                SampleRate = 16000,
-                            }
-                        )
-                    );
-                }
-                
-                var completionMessage = JsonSerializer.Serialize(new { Status = "Completed" });
-                await subscriber.PublishAsync(resultQueueName, completionMessage);
-
-                Console.WriteLine(
-                    $"[TextToSpeechLogic] Sent error response to prevent retries for task queue {resultQueueName}"
-                );
-            }
-            catch (Exception innerEx)
-            {
-                Console.WriteLine(
-                    $"[TextToSpeechLogic] Failed to send error response: {innerEx.Message}"
-                );
-            }
-        }
-    }
-
-    private async Task ProcessSingleResponseAsync(
-        TaskResponse taskResponse,
-        TaskRequest taskRequest,
-        string responseQueueId
-    )
-    {
-        var subscriber = _redis.GetSubscriber();
-        var resultQueueName = $"result_queue_{responseQueueId}";
-        Console.WriteLine($"[TextToSpeechLogic] Single response using queue: {resultQueueName}");
-
-        try
-        {
-            TTSResponse ttsResponse = ExtractTTSResponse(taskResponse.Data.Response);
-
-            if (string.IsNullOrEmpty(ttsResponse.AudioBase64))
-            {
-                Console.WriteLine($"[TextToSpeechLogic] Warning: Empty audio data in response");
-                ttsResponse = new TTSResponse
-                {
-                    AudioBase64 = "",
-                    Format = "wav",
-                    SampleRate = 16000,
-                };
-                Console.WriteLine(
-                    $"[TextToSpeechLogic] Created empty but valid response to prevent retries"
-                );
-            }
-            else
-            {
-                Console.WriteLine($"[TextToSpeechLogic] Audio data available in response");
-            }
-
-            string serializedResponse = JsonSerializer.Serialize(ttsResponse);
-            Console.WriteLine(
-                $"[TextToSpeechLogic] Serialized response (first 100 chars): {serializedResponse.Substring(0, Math.Min(100, serializedResponse.Length))}..."
-            );
-
-            await subscriber.PublishAsync(resultQueueName, serializedResponse);
-            Console.WriteLine($"[TextToSpeechLogic] Published TTS response to {resultQueueName}");
-            
-            var completionMessage = JsonSerializer.Serialize(new { Status = "Completed" });
-            await subscriber.PublishAsync(resultQueueName, completionMessage);
-            Console.WriteLine($"[TextToSpeechLogic] Published completion status to {resultQueueName}");
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine(
-                $"[TextToSpeechLogic] Error in ProcessSingleResponseAsync: {ex.Message}"
-            );
-            Console.WriteLine($"[TextToSpeechLogic] Exception type: {ex.GetType().FullName}");
-
-            try
-            {
-                var emptyResponse = new TTSResponse
-                {
-                    AudioBase64 = "",
-                    Format = "wav",
-                    SampleRate = 16000,
-                };
-
-                await subscriber.PublishAsync(
-                    resultQueueName,
-                    JsonSerializer.Serialize(emptyResponse)
-                );
-                
-                var completionMessage = JsonSerializer.Serialize(new { Status = "Completed" });
-                await subscriber.PublishAsync(resultQueueName, completionMessage);
-
-                Console.WriteLine($"[TextToSpeechLogic] Sent error response to prevent retries");
-            }
-            catch (Exception innerEx)
-            {
-                Console.WriteLine(
-                    $"[TextToSpeechLogic] Failed to send error response: {innerEx.Message}"
-                );
-            }
-        }
-    }
-
-    private async Task ProcessChunkResponseAsync(
-        TaskResponse taskResponse,
-        TaskRequest taskRequest,
-        string parentId,
-        string responseQueueId
-    )
-    {
-        var subscriber = _redis.GetSubscriber();
-        var resultQueueName = $"result_queue_{responseQueueId}";
-        Console.WriteLine($"[TextToSpeechLogic] Chunk response using queue: {resultQueueName} for parent: {parentId}");
-
-        try
-        {
-            if (!_buffers.TryGetValue(parentId, out var buffer))
-            {
-                buffer = new List<TTSResponse>();
-                _buffers[parentId] = buffer;
-            }
-
-            if (
-                !taskRequest.PrivateArgs.TryGetValue("order", out var orderObj)
-                || !int.TryParse(orderObj.ToString(), out int order)
-            )
-            {
-                Console.WriteLine(
-                    $"[TextToSpeechLogic] Missing order value, using default order 1"
-                );
-                order = 1;
-            }
-
-            bool isLast = false;
-            if (
-                taskRequest.PrivateArgs.TryGetValue("last", out var lastObj)
-                && bool.TryParse(lastObj.ToString(), out isLast)
-            )
-            {
-                Console.WriteLine($"[TextToSpeechLogic] Chunk {order} has isLast={isLast}");
-            }
-            else
-            {
-                isLast =
-                    taskRequest.PrivateArgs.TryGetValue("retry_count", out var retryObj)
-                    && int.TryParse(retryObj?.ToString() ?? "0", out var retryCount)
-                    && retryCount >= 2;
-                
-                Console.WriteLine($"[TextToSpeechLogic] Chunk {order} calculated isLast={isLast} from retry_count");
-            }
-
-            Console.WriteLine(
-                $"[TextToSpeechLogic] Processing chunk {order} (isLast: {isLast}) for parent {parentId}"
-            );
-
-            TTSResponse ttsResponse = ExtractTTSResponse(taskResponse.Data.Response);
-
-            if (string.IsNullOrEmpty(ttsResponse.AudioBase64))
-            {
-                Console.WriteLine(
-                    $"[TextToSpeechLogic] Warning: Empty audio data in chunk {order}"
-                );
-                ttsResponse = new TTSResponse
-                {
-                    AudioBase64 = "",
-                    Format = "wav",
-                    SampleRate = 16000,
-                };
-            }
-
-            while (buffer.Count < order)
-            {
-                buffer.Add(new TTSResponse());
-            }
-
-            if (buffer.Count == order)
-                buffer.Add(ttsResponse);
-            else
-                buffer[order - 1] = ttsResponse;
-
-            if (isLast)
-            {
-                Console.WriteLine(
-                    $"[TextToSpeechLogic] Last chunk received, sending complete response to {resultQueueName}"
-                );
-
-                bool hasEmptyChunk = buffer.Any(chunk =>
-                    string.IsNullOrWhiteSpace(chunk.AudioBase64)
-                );
-                if (hasEmptyChunk)
-                {
-                    Console.WriteLine(
-                        $"[TextToSpeechLogic] Warning: Some chunks have empty audio data"
-                    );
-                }
-
-                string serializedResponse = JsonSerializer.Serialize(buffer);
-                Console.WriteLine(
-                    $"[TextToSpeechLogic] Serialized complete response (first 100 chars): {serializedResponse.Substring(0, Math.Min(100, serializedResponse.Length))}..."
-                );
-
-                await subscriber.PublishAsync(resultQueueName, serializedResponse);
-                
-                var completionMessage = JsonSerializer.Serialize(new { Status = "Completed" });
-                await subscriber.PublishAsync(resultQueueName, completionMessage);
-                Console.WriteLine($"[TextToSpeechLogic] Published completion status to {resultQueueName}");
-
-                _buffers.TryRemove(parentId, out _);
-
-                Console.WriteLine(
-                    $"[TextToSpeechLogic] Successfully published final chunk response to {resultQueueName}"
-                );
-            }
-            else
-            {
-                Console.WriteLine(
-                    $"[TextToSpeechLogic] Chunk {order} processed and stored, waiting for more chunks"
-                );
-                
-                var currentRequestQueueName = $"result_queue_{taskRequest.Id}";
-                if (currentRequestQueueName != resultQueueName)
-                {
-                    Console.WriteLine($"[TextToSpeechLogic] Sending completion status to chunk queue {currentRequestQueueName}");
-                    var chunkCompletionMessage = JsonSerializer.Serialize(new { Status = "Completed" });
-                    await subscriber.PublishAsync(currentRequestQueueName, chunkCompletionMessage);
-                }
-            }
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine(
-                $"[TextToSpeechLogic] Error in ProcessChunkResponseAsync: {ex.Message}"
-            );
-            Console.WriteLine($"[TextToSpeechLogic] Exception type: {ex.GetType().FullName}");
-
-            try
-            {
-                var emptyResponseList = new List<TTSResponse>
-                {
-                    new TTSResponse
-                    {
-                        AudioBase64 = "",
-                        Format = "wav",
-                        SampleRate = 16000,
+                await DispatchBatchAsync(
+                    responseQueueId,
+                    new List<TTSResponse> { 
+                        new TTSResponse { 
+                            AudioBase64 = "", 
+                            Format = "wav", 
+                            SampleRate = 16000 
+                        } 
                     },
-                };
-
-                await subscriber.PublishAsync(
-                    resultQueueName,
-                    JsonSerializer.Serialize(emptyResponseList)
+                    sendCompletion: true
                 );
-                
-                var completionMessage = JsonSerializer.Serialize(new { Status = "Completed" });
-                await subscriber.PublishAsync(resultQueueName, completionMessage);
 
-                _buffers.TryRemove(parentId, out _);
-
-                Console.WriteLine(
-                    $"[TextToSpeechLogic] Sent error response to prevent retries for parent {parentId}"
-                );
+                Console.WriteLine($"[TextToSpeechLogic] Sent error response to prevent retries for task queue {resultQueueName}");
             }
             catch (Exception innerEx)
             {
-                Console.WriteLine(
-                    $"[TextToSpeechLogic] Failed to send error response: {innerEx.Message}"
-                );
+                Console.WriteLine($"[TextToSpeechLogic] Failed to send error response: {innerEx.Message}");
             }
+        }
+    }
+
+    private async Task DispatchBatchAsync(
+        string requestId,
+        IEnumerable<TTSResponse> responses,
+        bool sendCompletion
+    )
+    {
+        var subscriber = _redis.GetSubscriber();
+        var queueName = $"result_queue_{requestId}";
+
+        if (responses != null && responses.Any())
+        {
+            var responsesList = responses.ToList();
+            
+            if (responsesList.Count > 1 && sendCompletion)
+            {
+                var audioChunks = responsesList
+                    .Where(r => !string.IsNullOrEmpty(r.AudioBase64))
+                    .Select(r => r.AudioBase64)
+                    .ToList();
+                
+                if (audioChunks.Any())
+                {
+                    try
+                    {
+                        Console.WriteLine($"[TextToSpeechLogic] Combining {audioChunks.Count} audio chunks");
+                        string combinedAudio = AudioCombiner.CombineWavBase64(audioChunks);
+                        
+                        var combinedResponse = new TTSResponse
+                        {
+                            AudioBase64 = combinedAudio,
+                            Format = responsesList.First().Format,
+                            SampleRate = responsesList.First().SampleRate
+                        };
+                        
+                        responsesList = new List<TTSResponse> { combinedResponse };
+                        Console.WriteLine($"[TextToSpeechLogic] Successfully combined audio chunks");
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"[TextToSpeechLogic] Error combining audio: {ex.Message}");
+                    }
+                }
+            }
+            
+            var payload = JsonSerializer.Serialize(responsesList);
+            Console.WriteLine($"[TextToSpeechLogic] Sending audio responses to {queueName}, count: {responsesList.Count}");
+            await subscriber.PublishAsync(RedisChannel.Literal(queueName), payload);
+        }
+
+        if (sendCompletion)
+        {
+            var completion = JsonSerializer.Serialize(new { Status = "Completed" });
+            Console.WriteLine($"[TextToSpeechLogic] Sending completion status to {queueName}");
+            await subscriber.PublishAsync(RedisChannel.Literal(queueName), completion);
         }
     }
 
@@ -346,9 +333,7 @@ public sealed class TextToSpeechLogic : ITextToSpeechLogic
     {
         try
         {
-            Console.WriteLine(
-                $"[TextToSpeechLogic] ExtractTTSResponse from type: {responseObj?.GetType().FullName ?? "null"}"
-            );
+            Console.WriteLine($"[TextToSpeechLogic] ExtractTTSResponse from type: {responseObj?.GetType().FullName ?? "null"}");
 
             if (responseObj is TTSResponse ttsResponse)
             {
@@ -368,10 +353,7 @@ public sealed class TextToSpeechLogic : ITextToSpeechLogic
                         Format = jsonElement.TryGetProperty("format", out var formatProp)
                             ? formatProp.GetString() ?? "wav"
                             : "wav",
-                        SampleRate = jsonElement.TryGetProperty(
-                            "sample_rate",
-                            out var sampleRateProp
-                        )
+                        SampleRate = jsonElement.TryGetProperty("sample_rate", out var sampleRateProp)
                             ? sampleRateProp.GetInt32()
                             : 16000,
                     };
@@ -379,10 +361,8 @@ public sealed class TextToSpeechLogic : ITextToSpeechLogic
 
                 if (jsonElement.TryGetProperty("response", out var responseProp))
                 {
-                    if (
-                        responseProp.ValueKind == JsonValueKind.Object
-                        && responseProp.TryGetProperty("audio", out var innerAudioProp)
-                    )
+                    if (responseProp.ValueKind == JsonValueKind.Object
+                        && responseProp.TryGetProperty("audio", out var innerAudioProp))
                     {
                         return new TTSResponse
                         {
@@ -390,10 +370,7 @@ public sealed class TextToSpeechLogic : ITextToSpeechLogic
                             Format = responseProp.TryGetProperty("format", out var formatProp)
                                 ? formatProp.GetString() ?? "wav"
                                 : "wav",
-                            SampleRate = responseProp.TryGetProperty(
-                                "sample_rate",
-                                out var sampleRateProp
-                            )
+                            SampleRate = responseProp.TryGetProperty("sample_rate", out var sampleRateProp)
                                 ? sampleRateProp.GetInt32()
                                 : 16000,
                         };
@@ -402,18 +379,14 @@ public sealed class TextToSpeechLogic : ITextToSpeechLogic
             }
 
             string json = JsonSerializer.Serialize(responseObj);
-            Console.WriteLine(
-                $"[TextToSpeechLogic] Attempting to extract from JSON: {json.Substring(0, Math.Min(100, json.Length))}..."
-            );
+            Console.WriteLine($"[TextToSpeechLogic] Attempting to extract from JSON: {json.Substring(0, Math.Min(100, json.Length))}...");
 
             try
             {
                 var result = JsonSerializer.Deserialize<TTSResponse>(json);
                 if (result != null && !string.IsNullOrEmpty(result.AudioBase64))
                 {
-                    Console.WriteLine(
-                        "[TextToSpeechLogic] Successfully extracted TTSResponse from JSON"
-                    );
+                    Console.WriteLine("[TextToSpeechLogic] Successfully extracted TTSResponse from JSON");
                     return result;
                 }
 
@@ -452,10 +425,8 @@ public sealed class TextToSpeechLogic : ITextToSpeechLogic
         if (depth > 3)
             return string.Empty;
 
-        if (
-            element.TryGetProperty("audio", out var audioProp)
-            && audioProp.ValueKind == JsonValueKind.String
-        )
+        if (element.TryGetProperty("audio", out var audioProp)
+            && audioProp.ValueKind == JsonValueKind.String)
         {
             return audioProp.GetString() ?? string.Empty;
         }
@@ -464,10 +435,8 @@ public sealed class TextToSpeechLogic : ITextToSpeechLogic
         {
             foreach (var prop in element.EnumerateObject())
             {
-                if (
-                    prop.Value.ValueKind == JsonValueKind.Object
-                    || prop.Value.ValueKind == JsonValueKind.Array
-                )
+                if (prop.Value.ValueKind == JsonValueKind.Object
+                    || prop.Value.ValueKind == JsonValueKind.Array)
                 {
                     string result = FindAudioProperty(prop.Value, depth + 1);
                     if (!string.IsNullOrEmpty(result))

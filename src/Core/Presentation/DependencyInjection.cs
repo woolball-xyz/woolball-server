@@ -17,14 +17,10 @@ public static class DependencyInjection
         services.AddHostedService<PreProcessingQueue>();
         services.AddHostedService<SplitAudioBySilenceQueue>();
         services.AddHostedService<SplitTextQueue>();
-        return services;
-    }
-
-    public static IServiceCollection AddPostProcessingQueue(this IServiceCollection services)
-    {
         services.AddHostedService<PostProcessingQueue>();
         return services;
     }
+
 
     public static IEndpointRouteBuilder AddEndPoints(this IEndpointRouteBuilder app)
     {
