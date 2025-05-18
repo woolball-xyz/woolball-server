@@ -13,10 +13,3 @@ public class TTSResponse
     [JsonPropertyName("sample_rate")]
     public int SampleRate { get; set; } = 16000;
 }
-
-public sealed class TextToSpeechResponseData
-{
-    public string RequestId { get; set; } = string.Empty;
-    public string Error { get; set; } = string.Empty;
-    public TTSResponse Response { get; set; }
-}
