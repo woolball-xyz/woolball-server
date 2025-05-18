@@ -139,7 +139,7 @@ public sealed class TaskBusinessLogic(IConnectionMultiplexer redis) : ITaskBusin
         Console.WriteLine($"[StreamTaskResultAsync] listening: {queueName}");
         while (!cancellationToken.IsCancellationRequested)
         {
-            var message = await channel.ReadAsync();
+            var message = await channel.ReadAsync(cancellationToken);
             if (message.Message.IsNullOrEmpty)
                 continue;
 

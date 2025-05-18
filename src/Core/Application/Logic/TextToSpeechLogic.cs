@@ -175,7 +175,10 @@ public sealed class TextToSpeechLogic : ITextToSpeechLogic
 
             if (taskRequest.PrivateArgs.TryGetValue("order", out var batchOrderObj))
             {
-                int.TryParse(batchOrderObj?.ToString(), out batchOrder);
+                if (int.TryParse(batchOrderObj?.ToString(), out int parsedOrder))
+                {
+                    batchOrder = parsedOrder;
+                }
             }
 
             bool shouldSendResponse = false;
@@ -224,7 +227,7 @@ public sealed class TextToSpeechLogic : ITextToSpeechLogic
                 }
             }
 
-            if (shouldSendResponse && batchToSend.Any())
+            if (shouldSendResponse && batchToSend.Count > 0)
             {
                 await DispatchBatchAsync(responseQueueId, batchToSend, sendCompletion: true);
             }
@@ -282,7 +285,7 @@ public sealed class TextToSpeechLogic : ITextToSpeechLogic
         var subscriber = _redis.GetSubscriber();
         var queueName = $"result_queue_{requestId}";
 
-        if (responses != null && responses.Any())
+        if (responses != null && responses.Count() > 0)
         {
             var responsesList = responses.ToList();
 
@@ -293,7 +296,7 @@ public sealed class TextToSpeechLogic : ITextToSpeechLogic
                     .Select(r => r.AudioBase64)
                     .ToList();
 
-                if (audioChunks.Any())
+                if (audioChunks.Count > 0)
                 {
                     try
                     {
