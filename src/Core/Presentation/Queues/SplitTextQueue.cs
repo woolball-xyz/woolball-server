@@ -92,7 +92,6 @@ public sealed class SplitTextQueue(IServiceScopeFactory serviceScopeFactory) : B
         await foreach (var segment in BreakTextIntoChunks(text))
         {
             request.Kwargs["input"] = segment.Text;
-            request.PrivateArgs["start"] = "0";
             request.PrivateArgs["parent"] = parent;
             request.PrivateArgs["order"] = segment.Order.ToString();
             request.PrivateArgs["last"] = segment.IsLast.ToString();
