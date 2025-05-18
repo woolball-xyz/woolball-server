@@ -29,7 +29,6 @@ public sealed class PostProcessingQueue(IServiceScopeFactory serviceScopeFactory
                 var consumer = await subscriber.SubscribeAsync(
                     RedisChannel.Literal("post_processing_queue")
                 );
-                Console.WriteLine("Postprocessing queue is running...");
                 consumer.OnMessage(async message =>
                 {
                     string? taskId = null;
@@ -39,10 +38,6 @@ public sealed class PostProcessingQueue(IServiceScopeFactory serviceScopeFactory
 
                         if (string.IsNullOrWhiteSpace(messageStr))
                             return;
-
-                        Console.WriteLine(
-                            $"[PostProcessingQueue] Received message: {messageStr.Substring(0, Math.Min(100, messageStr.Length))}..."
-                        );
 
                         TaskResponse taskResponse;
                         try
@@ -56,64 +51,7 @@ public sealed class PostProcessingQueue(IServiceScopeFactory serviceScopeFactory
                             Console.WriteLine(
                                 $"[PostProcessingQueue] Deserialization error: {ex.Message}. Trying fallback..."
                             );
-                            try
-                            {
-                                var jsonObj = JsonDocument.Parse(messageStr).RootElement;
-
-                                string nodeId = "";
-                                string requestId = "";
-
-                                if (
-                                    jsonObj.TryGetProperty("NodeId", out var nodeIdProp)
-                                    || jsonObj.TryGetProperty("nodeId", out nodeIdProp)
-                                )
-                                {
-                                    nodeId = nodeIdProp.GetString() ?? "";
-                                }
-
-                                if (
-                                    jsonObj.TryGetProperty("Data", out var dataProp)
-                                    || jsonObj.TryGetProperty("data", out dataProp)
-                                )
-                                {
-                                    if (
-                                        dataProp.TryGetProperty("RequestId", out var reqIdProp)
-                                        || dataProp.TryGetProperty("requestId", out reqIdProp)
-                                    )
-                                    {
-                                        requestId = reqIdProp.GetString() ?? "";
-                                    }
-                                }
-                                else if (jsonObj.TryGetProperty("id", out var idProp))
-                                {
-                                    requestId = idProp.GetString() ?? "";
-                                }
-
-                                if (string.IsNullOrEmpty(requestId))
-                                {
-                                    Console.WriteLine(
-                                        "[PostProcessingQueue] Could not extract request ID from message"
-                                    );
-                                    return;
-                                }
-
-                                taskResponse = new TaskResponse
-                                {
-                                    NodeId = nodeId,
-                                    Data = new TaskResponseData<object>
-                                    {
-                                        RequestId = requestId,
-                                        Response = jsonObj,
-                                    },
-                                };
-                            }
-                            catch (Exception fallbackEx)
-                            {
-                                Console.WriteLine(
-                                    $"[PostProcessingQueue] Fallback also failed: {fallbackEx.Message}"
-                                );
-                                return;
-                            }
+                            return;
                         }
 
                         var request = await db.StringGetAsync(
@@ -147,24 +85,12 @@ public sealed class PostProcessingQueue(IServiceScopeFactory serviceScopeFactory
 
                         try
                         {
-                            Console.WriteLine(
-                                $"[PostProcessingQueue] Processing task of type: {taskRequest.Task}"
-                            );
                             await ProcessTaskResponseAsync(taskResponse, taskRequest);
-                            Console.WriteLine(
-                                $"[PostProcessingQueue] Successfully processed task {taskRequest.Id} of type {taskRequest.Task}"
-                            );
                         }
                         catch (Exception ex)
                         {
                             Console.WriteLine(
                                 $"[PostProcessingQueue] Error processing task {taskRequest.Id}: {ex.Message}"
-                            );
-                            Console.WriteLine(
-                                $"[PostProcessingQueue] Exception type: {ex.GetType().FullName}"
-                            );
-                            Console.WriteLine(
-                                $"[PostProcessingQueue] Stack trace: {ex.StackTrace}"
                             );
 
                             int retryCount = 0;
