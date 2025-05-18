@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using Application.Logic;
 using Contracts.Constants;
 using Domain.Contracts;
@@ -28,7 +29,6 @@ public sealed class PostProcessingQueue(IServiceScopeFactory serviceScopeFactory
                 var consumer = await subscriber.SubscribeAsync(
                     RedisChannel.Literal("post_processing_queue")
                 );
-                Console.WriteLine("Postprocessing queue is running...");
                 consumer.OnMessage(async message =>
                 {
                     string? taskId = null;
@@ -39,9 +39,20 @@ public sealed class PostProcessingQueue(IServiceScopeFactory serviceScopeFactory
                         if (string.IsNullOrWhiteSpace(messageStr))
                             return;
 
-                        var taskResponse = JsonSerializer.Deserialize<TaskResponse>(messageStr);
-                        if (taskResponse == null)
+                        TaskResponse taskResponse;
+                        try
+                        {
+                            taskResponse = JsonSerializer.Deserialize<TaskResponse>(messageStr);
+                            if (taskResponse == null)
+                                return;
+                        }
+                        catch (Exception ex)
+                        {
+                            Console.WriteLine(
+                                $"[PostProcessingQueue] Deserialization error: {ex.Message}. Trying fallback..."
+                            );
                             return;
+                        }
 
                         var request = await db.StringGetAsync(
                             $"task:{taskResponse.Data.RequestId}"
@@ -66,7 +77,6 @@ public sealed class PostProcessingQueue(IServiceScopeFactory serviceScopeFactory
                             return;
                         }
 
-                        // Verificar se já existe contagem de tentativas
                         if (!taskRequest.PrivateArgs.ContainsKey("retry_count"))
                         {
                             taskRequest.PrivateArgs["retry_count"] = 0;
@@ -79,16 +89,52 @@ public sealed class PostProcessingQueue(IServiceScopeFactory serviceScopeFactory
                         }
                         catch (Exception ex)
                         {
-                            int retryCount = Convert.ToInt32(
-                                taskRequest.PrivateArgs["retry_count"]
+                            Console.WriteLine(
+                                $"[PostProcessingQueue] Error processing task {taskRequest.Id}: {ex.Message}"
                             );
+
+                            int retryCount = 0;
+                            if (
+                                taskRequest.PrivateArgs.TryGetValue(
+                                    "retry_count",
+                                    out var retryValue
+                                )
+                            )
+                            {
+                                if (retryValue is int intValue)
+                                {
+                                    retryCount = intValue;
+                                }
+                                else if (retryValue is JsonElement jsonElement)
+                                {
+                                    if (jsonElement.ValueKind == JsonValueKind.Number)
+                                    {
+                                        retryCount = jsonElement.GetInt32();
+                                    }
+                                    else if (
+                                        jsonElement.ValueKind == JsonValueKind.String
+                                        && int.TryParse(
+                                            jsonElement.GetString(),
+                                            out var parsedValue
+                                        )
+                                    )
+                                    {
+                                        retryCount = parsedValue;
+                                    }
+                                }
+                                else if (retryValue != null)
+                                {
+                                    if (int.TryParse(retryValue.ToString(), out var parsedValue))
+                                    {
+                                        retryCount = parsedValue;
+                                    }
+                                }
+                            }
 
                             if (retryCount < MaxRetryAttempts)
                             {
-                                // Incrementar contador de tentativas
                                 taskRequest.PrivateArgs["retry_count"] = retryCount + 1;
 
-                                // Atualizar o taskRequest no Redis
                                 await db.StringSetAsync(
                                     $"task:{taskRequest.Id}",
                                     JsonSerializer.Serialize(taskRequest)
@@ -98,7 +144,6 @@ public sealed class PostProcessingQueue(IServiceScopeFactory serviceScopeFactory
                                     $"Retrying task {taskRequest.Id}, attempt {retryCount + 1} of {MaxRetryAttempts}"
                                 );
 
-                                // Redistribuir para a fila de distribuição
                                 var distributeSubscriber = redis.GetSubscriber();
                                 await distributeSubscriber.PublishAsync(
                                     RedisChannel.Literal("distribute_queue"),
@@ -146,14 +191,32 @@ public sealed class PostProcessingQueue(IServiceScopeFactory serviceScopeFactory
 
         switch (taskRequest.Task)
         {
-            case "speech-recognition":
+            case var task when task == AvailableModels.SpeechToText:
                 var speechToTextLogic =
                     scope.ServiceProvider.GetRequiredService<ISpeechToTextLogic>();
                 await speechToTextLogic.ProcessTaskResponseAsync(taskResponse, taskRequest);
                 break;
 
-            default:
+            case var task when task == AvailableModels.TextToSpeech:
+                var textToSpeechLogic =
+                    scope.ServiceProvider.GetRequiredService<ITextToSpeechLogic>();
+                await textToSpeechLogic.ProcessTaskResponseAsync(taskResponse, taskRequest);
                 break;
+
+            case var task when task == AvailableModels.Translation:
+                var translationLogic =
+                    scope.ServiceProvider.GetRequiredService<ITranslationLogic>();
+                await translationLogic.ProcessTaskResponseAsync(taskResponse, taskRequest);
+                break;
+
+            case var task when task == AvailableModels.TextGeneration:
+                var textGenerationLogic =
+                    scope.ServiceProvider.GetRequiredService<ITextGenerationLogic>();
+                await textGenerationLogic.ProcessTaskResponseAsync(taskResponse, taskRequest);
+                break;
+
+            default:
+                throw new NotSupportedException($"Unsupported task type: {taskRequest.Task}");
         }
     }
 }

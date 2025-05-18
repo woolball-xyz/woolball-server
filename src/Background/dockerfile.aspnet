@@ -6,14 +6,12 @@ WORKDIR /app
 COPY . .
 RUN dotnet publish -c Release -o /out Background/Background.csproj
 
-
 # final stage/image
 FROM mcr.microsoft.com/dotnet/aspnet:10.0-preview
 
+RUN apt-get update && apt-get install -y ffmpeg
 WORKDIR /app
 COPY --from=build /out ./
-
-RUN apt-get update && apt-get install -y ffmpeg
 
 ENV ENV_PROJECT_NAME "./Background"
 

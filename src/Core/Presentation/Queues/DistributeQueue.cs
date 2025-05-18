@@ -92,7 +92,6 @@ public sealed class DistributeQueue : BackgroundService
                     {
                         Console.WriteLine($"Error in distribute queue: {ex.Message}");
 
-                        // Tentar extrair o ID da tarefa para emitir erro
                         try
                         {
                             if (!string.IsNullOrEmpty(taskRequestText))
@@ -107,26 +106,22 @@ public sealed class DistributeQueue : BackgroundService
                                     await logic.EmitTaskRequestErrorAsync(
                                         taskRequest.Id.ToString()
                                     );
-                                    Console.WriteLine(
-                                        $"Emitido erro para a tarefa {taskRequest.Id}"
-                                    );
+                                    Console.WriteLine($"Error emitted for task {taskRequest.Id}");
                                 }
                             }
                         }
                         catch (Exception innerEx)
                         {
-                            Console.WriteLine($"Falha ao emitir erro: {innerEx.Message}");
+                            Console.WriteLine($"Failed to emit error: {innerEx.Message}");
                         }
                     }
                 });
 
-                // Keep the connection alive
                 await Task.Delay(Timeout.Infinite, stoppingToken);
             }
             catch (Exception e)
             {
                 Console.WriteLine($"Error in distribute queue: {e.Message}");
-                // Add delay before retry
                 await Task.Delay(5000, stoppingToken);
             }
         }

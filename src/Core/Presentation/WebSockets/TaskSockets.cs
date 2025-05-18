@@ -44,8 +44,8 @@ public static class TaskSockets
 
         await webSocketNodesQueue.AddWebsocketInQueueAsync(id, webSocket);
 
-        var buffer = new byte[1024];
-        WebSocketReceiveResult result = null;
+        var buffer = new byte[1024 * 4];
+        WebSocketReceiveResult result;
 
         var publisher = redis.GetSubscriber();
 
@@ -88,18 +88,29 @@ public static class TaskSockets
 
                 if (!string.IsNullOrEmpty(data))
                 {
-                    var responseBody = JsonSerializer.Deserialize<TaskResponseBody>(
-                        data,
-                        new JsonSerializerOptions { PropertyNameCaseInsensitive = true }
-                    );
-                    var response = new TaskResponse { NodeId = id, Data = responseBody.Data };
-                    Console.WriteLine(
-                        $"[ReceiveAsync] Mensagem recebida: {JsonSerializer.Serialize(response)}"
-                    );
-                    await publisher.PublishAsync(
-                        RedisChannel.Literal("post_processing_queue"),
-                        JsonSerializer.Serialize(response)
-                    );
+                    try
+                    {
+                        var responseBody = JsonSerializer.Deserialize<TaskResponseBody>(
+                            data,
+                            new JsonSerializerOptions { PropertyNameCaseInsensitive = true }
+                        );
+                        
+                        var response = new TaskResponse
+                        {
+                            NodeId = id,
+                            Data = responseBody?.Data ?? new TaskResponseData<object>(),
+                        };
+
+                        await publisher.PublishAsync(
+                            RedisChannel.Literal("post_processing_queue"),
+                            JsonSerializer.Serialize(response)
+                        );
+                    }
+                    catch (Exception ex)
+                    {
+                        // should redistribute
+                        Console.WriteLine($"[ReceiveAsync] Error processing task response: {ex.Message}");
+                    }
                 }
 
                 await webSocketNodesQueue.AddWebsocketInQueueAsync(id, webSocket);
@@ -108,7 +119,7 @@ public static class TaskSockets
             await webSocket.CloseAsync(
                 result.CloseStatus.Value,
                 result.CloseStatusDescription,
-                CancellationToken.None
+                cancellationToken
             );
         }
         catch (OperationCanceledException)
@@ -118,7 +129,7 @@ public static class TaskSockets
                 await webSocket.CloseAsync(
                     WebSocketCloseStatus.NormalClosure,
                     "Connection closed due to cancellation",
-                    CancellationToken.None
+                    cancellationToken
                 );
             }
         }
@@ -129,7 +140,7 @@ public static class TaskSockets
                 await webSocket.CloseAsync(
                     WebSocketCloseStatus.InternalServerError,
                     "WebSocket error occurred.",
-                    CancellationToken.None
+                    cancellationToken
                 );
             }
         }

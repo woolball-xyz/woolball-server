@@ -3,6 +3,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Threading.Tasks;
 using Domain.Contracts;
 using StackExchange.Redis;
@@ -31,10 +32,19 @@ namespace Application.Logic
             TaskRequest taskRequest
         )
         {
-            var stt = taskResponse.Data.Response;
-            Console.WriteLine(
-                $"Processing task response for request : {JsonSerializer.Serialize(taskResponse)}"
-            );
+            STTChunk stt;
+
+            if (taskResponse.Data.Response is STTChunk sttr)
+            {
+                stt = sttr;
+            }
+            else
+            {
+                var json = JsonSerializer.Serialize(taskResponse.Data.Response);
+                var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+                stt = JsonSerializer.Deserialize<STTChunk>(json, options);
+            }
+
             if (stt == null)
                 return;
 
@@ -61,6 +71,12 @@ namespace Application.Logic
                 taskRequest.Kwargs.TryGetValue("stream", out var streamObj)
                 && bool.TryParse(streamObj?.ToString(), out var s)
                 && s;
+
+            if (isStream && !_streamBuffers.ContainsKey(requestId))
+            {
+                _streamBuffers.TryAdd(requestId, new StreamBuffer());
+            }
+
             bool isLast =
                 taskRequest.PrivateArgs.TryGetValue("last", out var lastObj)
                 && bool.TryParse(lastObj?.ToString(), out var l)
@@ -68,11 +84,7 @@ namespace Application.Logic
 
             if (!hasParent)
             {
-                await DispatchBatchAsync(
-                    requestId,
-                    sttChunksList,
-                    sendCompletion: true
-                );
+                await DispatchBatchAsync(requestId, sttChunksList, sendCompletion: true);
                 return;
             }
 
@@ -90,7 +102,9 @@ namespace Application.Logic
                     lock (buf)
                     {
                         if (isLast)
+                        {
                             buf.LastOrder = order;
+                        }
 
                         if (!buf.Pending.TryGetValue(order, out var list))
                         {
@@ -113,19 +127,33 @@ namespace Application.Logic
                         }
                     }
 
-                    if (toSend.Count > 0 || sendCompletion)
+                    if (toSend.Count > 0)
                     {
-                        await DispatchBatchAsync(requestId, toSend, sendCompletion);
+                        await DispatchBatchAsync(requestId, toSend, sendCompletion: sendCompletion);
+                    }
+                    else if (sendCompletion)
+                    {
+                        await DispatchBatchAsync(
+                            requestId,
+                            new List<STTChunk>(),
+                            sendCompletion: true
+                        );
                     }
                 }
                 else
                 {
                     await DispatchBatchAsync(requestId, sttChunksList, sendCompletion: isLast);
+
+                    if (isLast)
+                    {
+                        _streamBuffers.TryRemove(requestId, out _);
+                    }
                 }
 
                 return;
             }
 
+            // Non-streaming case
             var buffer = _buffers.GetOrAdd(requestId, _ => new List<STTChunk>());
             lock (buffer)
             {
@@ -147,6 +175,7 @@ namespace Application.Logic
                     buffer.Clear();
                 }
                 _buffers.TryRemove(requestId, out _);
+
                 await DispatchBatchAsync(requestId, toSend, sendCompletion: true);
             }
         }
@@ -163,12 +192,14 @@ namespace Application.Logic
             if (chunks != null && chunks.Any())
             {
                 var payload = JsonSerializer.Serialize(chunks);
+                Console.WriteLine($"Sending chunks to {queueName}, count: {chunks.Count()}");
                 await subscriber.PublishAsync(RedisChannel.Literal(queueName), payload);
             }
 
             if (sendCompletion)
             {
                 var completion = JsonSerializer.Serialize(new { Status = "Completed" });
+                Console.WriteLine($"Sending completion status to {queueName}");
                 await subscriber.PublishAsync(RedisChannel.Literal(queueName), completion);
             }
         }

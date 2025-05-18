@@ -3,5 +3,6 @@
 **/obj
 /.vs
 
+/.cursor
 
 **/.env.prod

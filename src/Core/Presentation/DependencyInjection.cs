@@ -16,11 +16,7 @@ public static class DependencyInjection
     {
         services.AddHostedService<PreProcessingQueue>();
         services.AddHostedService<SplitAudioBySilenceQueue>();
-        return services;
-    }
-
-    public static IServiceCollection AddPostProcessingQueue(this IServiceCollection services)
-    {
+        services.AddHostedService<SplitTextQueue>();
         services.AddHostedService<PostProcessingQueue>();
         return services;
     }
@@ -28,7 +24,6 @@ public static class DependencyInjection
     public static IEndpointRouteBuilder AddEndPoints(this IEndpointRouteBuilder app)
     {
         app.AddHealthCheckEndPoints();
-        app.AddModelsEndPoints();
         app.AddTasksEndPoints();
 
         return app;

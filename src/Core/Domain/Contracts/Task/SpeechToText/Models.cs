@@ -21,21 +21,3 @@ public class Chunk
     public string Text { get; set; } = string.Empty;
 }
 
-public sealed class TaskResponseBody
-{
-    public string Type { get; set; } = string.Empty;
-    public TaskResponseData Data { get; set; }
-}
-
-public sealed class TaskResponse
-{
-    public string NodeId { get; set; }
-    public TaskResponseData Data { get; set; }
-}
-
-public sealed class TaskResponseData
-{
-    public string RequestId { get; set; } = string.Empty;
-    public string Error { get; set; } = string.Empty;
-    public STTChunk Response { get; set; }
-}
