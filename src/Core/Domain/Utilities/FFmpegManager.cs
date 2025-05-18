@@ -77,7 +77,8 @@ namespace Domain.Utilities
                 var matches = Regex.Matches(
                     output,
                     @"silence_start: (\d+\.?\d*)",
-                    RegexOptions.Multiline
+                    RegexOptions.Multiline,
+                    TimeSpan.FromMilliseconds(100)
                 );
 
                 foreach (Match match in matches)
@@ -291,7 +292,7 @@ namespace Domain.Utilities
 
                 if (process.ExitCode == 0 && !string.IsNullOrWhiteSpace(output))
                 {
-                    return Regex.IsMatch(output, "audio", RegexOptions.IgnoreCase);
+                    return Regex.IsMatch(output, "audio", RegexOptions.IgnoreCase, TimeSpan.FromMilliseconds(100));
                 }
 
                 return false;
