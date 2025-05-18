@@ -106,9 +106,7 @@ public sealed class DistributeQueue : BackgroundService
                                     await logic.EmitTaskRequestErrorAsync(
                                         taskRequest.Id.ToString()
                                     );
-                                    Console.WriteLine(
-                                        $"Error emitted for task {taskRequest.Id}"
-                                    );
+                                    Console.WriteLine($"Error emitted for task {taskRequest.Id}");
                                 }
                             }
                         }

@@ -1,4 +1,5 @@
 using System.Text;
+
 public class AudioCombiner
 {
     public static string CombineWavBase64(List<string> base64WavFiles)

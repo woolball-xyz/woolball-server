@@ -320,7 +320,9 @@ namespace Domain.Utilities
 
             bool hasAudioTracks = await HasAudioTracksAsync(inputFilePath);
             if (!hasAudioTracks)
-                throw new InvalidOperationException("The file has no valid audio tracks for conversion");
+                throw new InvalidOperationException(
+                    "The file has no valid audio tracks for conversion"
+                );
 
             string outputDirectory = Path.GetDirectoryName(inputFilePath);
             string outputFileName = $"{Path.GetFileNameWithoutExtension(inputFilePath)}.wav";
@@ -380,9 +382,7 @@ namespace Domain.Utilities
                     {
                         File.Delete(outputFilePath);
                     }
-                    catch
-                    {
-                    }
+                    catch { }
                 }
 
                 throw new Exception($"Failed to convert file to WAV: {ex.Message}", ex);

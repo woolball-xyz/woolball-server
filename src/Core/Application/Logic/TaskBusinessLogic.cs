@@ -15,7 +15,7 @@ public sealed class TaskBusinessLogic(IConnectionMultiplexer redis) : ITaskBusin
             {
                 taskRequestId,
                 Status = "Error",
-                Error = "Processing failed after multiple attempts"
+                Error = "Processing failed after multiple attempts",
             };
             await subscriber.PublishAsync(
                 queueName,

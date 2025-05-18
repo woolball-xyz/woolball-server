@@ -71,8 +71,6 @@ public static class TasksEndPoints
             if (isStreaming)
             {
                 context.Response.ContentType = "text/plain";
-                context.Response.Headers.Add("X-Content-Type-Options", "nosniff");
-                context.Response.Headers.Add("Cache-Control", "no-cache");
 
                 await foreach (
                     var message in logic.StreamTaskResultAsync(request, cancellationToken)

@@ -45,9 +45,6 @@ namespace Application.Logic
                 stt = JsonSerializer.Deserialize<STTChunk>(json, options);
             }
 
-            Console.WriteLine(
-                $"Processing task response for request : {JsonSerializer.Serialize(taskResponse)}"
-            );
             if (stt == null)
                 return;
 
@@ -87,35 +84,17 @@ namespace Application.Logic
 
             if (!hasParent)
             {
-                Console.WriteLine(
-                    $"Single request (no parent) for {requestId}, stream: {isStream}"
-                );
-
-                if (isStream)
-                {
-                    Console.WriteLine($"Sending single chunk with stream flag for {requestId}");
-
-                    await DispatchBatchAsync(requestId, sttChunksList, sendCompletion: true);
-                }
-                else
-                {
-                    await DispatchBatchAsync(requestId, sttChunksList, sendCompletion: true);
-                }
+                await DispatchBatchAsync(requestId, sttChunksList, sendCompletion: true);
                 return;
             }
 
             if (isStream)
             {
-                Console.WriteLine(
-                    $"Processing streaming request: {requestId}, isLast: {isLast}, hasParent: {hasParent}"
-                );
-
                 if (
                     taskRequest.PrivateArgs.TryGetValue("order", out var ordObj)
                     && int.TryParse(ordObj?.ToString(), out var order)
                 )
                 {
-                    Console.WriteLine($"Streaming with order: {order}");
                     var buf = _streamBuffers.GetOrAdd(requestId, _ => new StreamBuffer());
                     List<STTChunk> toSend = new();
                     bool sendCompletion = false;
@@ -124,7 +103,6 @@ namespace Application.Logic
                     {
                         if (isLast)
                         {
-                            Console.WriteLine($"Setting LastOrder to {order} for {requestId}");
                             buf.LastOrder = order;
                         }
 
@@ -144,9 +122,6 @@ namespace Application.Logic
 
                         if (buf.LastOrder.HasValue && buf.NextExpected > buf.LastOrder.Value)
                         {
-                            Console.WriteLine(
-                                $"All chunks processed for {requestId}, setting completion flag"
-                            );
                             sendCompletion = true;
                             _streamBuffers.TryRemove(requestId, out _);
                         }
@@ -154,16 +129,10 @@ namespace Application.Logic
 
                     if (toSend.Count > 0)
                     {
-                        Console.WriteLine(
-                            $"Dispatching {toSend.Count} chunks for stream {requestId}"
-                        );
                         await DispatchBatchAsync(requestId, toSend, sendCompletion: sendCompletion);
                     }
                     else if (sendCompletion)
                     {
-                        Console.WriteLine(
-                            $"Stream {requestId} completed, sending completion status"
-                        );
                         await DispatchBatchAsync(
                             requestId,
                             new List<STTChunk>(),
@@ -173,12 +142,10 @@ namespace Application.Logic
                 }
                 else
                 {
-                    Console.WriteLine($"Simple streaming for {requestId}, isLast: {isLast}");
                     await DispatchBatchAsync(requestId, sttChunksList, sendCompletion: isLast);
 
                     if (isLast)
                     {
-                        Console.WriteLine($"Removing streamBuffer for {requestId} (isLast)");
                         _streamBuffers.TryRemove(requestId, out _);
                     }
                 }
@@ -187,7 +154,6 @@ namespace Application.Logic
             }
 
             // Non-streaming case
-            Console.WriteLine($"Non-streaming batch for {requestId}, isLast: {isLast}");
             var buffer = _buffers.GetOrAdd(requestId, _ => new List<STTChunk>());
             lock (buffer)
             {
@@ -196,7 +162,6 @@ namespace Application.Logic
 
             if (isLast)
             {
-                Console.WriteLine($"Processing final batch for non-streaming request {requestId}");
                 List<STTChunk> toSend;
                 lock (buffer)
                 {

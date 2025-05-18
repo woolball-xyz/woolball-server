@@ -1,5 +1,5 @@
 public enum OperationType
 {
     ChargeUser = 0,
-    PayProcessor = 1
+    PayProcessor = 1,
 }

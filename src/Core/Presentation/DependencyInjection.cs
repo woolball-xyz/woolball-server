@@ -21,7 +21,6 @@ public static class DependencyInjection
         return services;
     }
 
-
     public static IEndpointRouteBuilder AddEndPoints(this IEndpointRouteBuilder app)
     {
         app.AddHealthCheckEndPoints();

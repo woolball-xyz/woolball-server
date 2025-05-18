@@ -28,9 +28,13 @@ public sealed class SessionTrackQueue(IServiceScopeFactory serviceScopeFactory) 
                 var db = redis.GetDatabase();
                 var subscriber = redis.GetSubscriber();
 
-                var sessionTrackChannel = await subscriber.SubscribeAsync("sesion_tracking_queue");
+                var sessionTrackChannel = await subscriber.SubscribeAsync(
+                    RedisChannel.Literal("sesion_tracking_queue")
+                );
 
-                var taskCompletionChannel = await subscriber.SubscribeAsync("task_completion");
+                var taskCompletionChannel = await subscriber.SubscribeAsync(
+                    RedisChannel.Literal("task_completion")
+                );
 
                 sessionTrackChannel.OnMessage(message =>
                 {
@@ -106,7 +110,10 @@ public sealed class SessionTrackQueue(IServiceScopeFactory serviceScopeFactory) 
 
                     if (attempts < MAX_RETRY_ATTEMPTS)
                     {
-                        await subscriber.PublishAsync("distribute_queue", taskData);
+                        await subscriber.PublishAsync(
+                            RedisChannel.Literal("distribute_queue"),
+                            taskData
+                        );
                         Console.WriteLine(
                             $"Task {taskId} redistributed due to timeout (attempt {attempts} of {MAX_RETRY_ATTEMPTS})"
                         );
@@ -123,7 +130,10 @@ public sealed class SessionTrackQueue(IServiceScopeFactory serviceScopeFactory) 
                             new TaskCompletionData { TaskRequestId = taskId, Status = "failed" }
                         );
 
-                        await subscriber.PublishAsync($"result_queue_{taskId}", failureMessage);
+                        await subscriber.PublishAsync(
+                            RedisChannel.Literal($"result_queue_{taskId}"),
+                            failureMessage
+                        );
                     }
                 }
             }
