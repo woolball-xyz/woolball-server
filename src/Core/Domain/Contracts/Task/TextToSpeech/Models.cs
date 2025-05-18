@@ -14,7 +14,6 @@ public class TTSResponse
     public int SampleRate { get; set; } = 16000;
 }
 
-// Esta classe será substituída gradualmente pelo uso de TaskResponseData<TTSResponse>
 public sealed class TextToSpeechResponseData
 {
     public string RequestId { get; set; } = string.Empty;
