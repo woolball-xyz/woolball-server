@@ -88,24 +88,19 @@ public static class TaskSockets
 
                 if (!string.IsNullOrEmpty(data))
                 {
-                    Console.WriteLine(
-                        $"[TaskSockets] Received raw data: {data.Substring(0, Math.Min(100, data.Length))}..."
-                    );
-
                     try
                     {
                         var responseBody = JsonSerializer.Deserialize<TaskResponseBody>(
                             data,
                             new JsonSerializerOptions { PropertyNameCaseInsensitive = true }
                         );
+                        
                         var response = new TaskResponse
                         {
                             NodeId = id,
                             Data = responseBody?.Data ?? new TaskResponseData<object>(),
                         };
-                        Console.WriteLine(
-                            $"[ReceiveAsync] Message received: {JsonSerializer.Serialize(response)}"
-                        );
+
                         await publisher.PublishAsync(
                             RedisChannel.Literal("post_processing_queue"),
                             JsonSerializer.Serialize(response)
@@ -113,46 +108,8 @@ public static class TaskSockets
                     }
                     catch (Exception ex)
                     {
-                        Console.WriteLine(
-                            $"[TaskSockets] Error deserializing WebSocket message: {ex.Message}"
-                        );
-                        Console.WriteLine($"[TaskSockets] Attempting fallback deserialization...");
-
-                        try
-                        {
-                            var jsonObj = JsonDocument.Parse(data).RootElement;
-
-                            var responseData = new TaskResponseData<object>
-                            {
-                                RequestId = jsonObj.TryGetProperty("id", out var idProp)
-                                    ? idProp.GetString() ?? ""
-                                    : "",
-                                Error = jsonObj.TryGetProperty("error", out var errorProp)
-                                    ? errorProp.GetString() ?? ""
-                                    : "",
-                                Response = jsonObj.TryGetProperty("response", out var responseProp)
-                                    ? (object)responseProp
-                                    : null,
-                            };
-
-                            string responseJson = JsonSerializer.Serialize(
-                                new TaskResponse { NodeId = id, Data = responseData }
-                            );
-
-                            Console.WriteLine(
-                                $"[TaskSockets] Fallback response: {responseJson.Substring(0, Math.Min(100, responseJson.Length))}..."
-                            );
-                            await publisher.PublishAsync(
-                                RedisChannel.Literal("post_processing_queue"),
-                                responseJson
-                            );
-                        }
-                        catch (Exception innerEx)
-                        {
-                            Console.WriteLine(
-                                $"[TaskSockets] Error in fallback deserialization: {innerEx.Message}"
-                            );
-                        }
+                        // should redistribute
+                        Console.WriteLine($"[ReceiveAsync] Error processing task response: {ex.Message}");
                     }
                 }
 
