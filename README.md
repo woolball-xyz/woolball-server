@@ -28,7 +28,7 @@ This repository contains the open-source **network server** that dispatches jobs
 | **[Transformers.js](https://github.com/huggingface/transformers.js)** | Translation | [ONNX Models](https://huggingface.co/models?pipeline_tag=translation&library=transformers.js&sort=trending) | ✅ Implemented |
 | **[Transformers.js](https://github.com/huggingface/transformers.js)** | Image-Text-to-Text | [ONNX Models](https://huggingface.co/models?pipeline_tag=image-text-to-text&library=transformers.js&sort=trending) | 🚧 Pending |
 | **[Transformers.js](https://github.com/huggingface/transformers.js)** | Text-Generation | [ONNX Models](https://huggingface.co/models?pipeline_tag=text-generation&library=transformers.js&sort=trending) | ✅ Implemented |
-| **[WebLLM](https://github.com/mlc-ai/web-llm)** | Text Generation | [MLC Models](https://mlc.ai/models) | 🚧 Pending |
+| **[WebLLM](https://github.com/mlc-ai/web-llm)** | Text Generation | [MLC Models](https://mlc.ai/models) | ✅ Implemented |
 | **[MediaPipe](https://ai.google.dev/edge/mediapipe/solutions/guide)** | Text Generation | [LiteRT Models](https://ai.google.dev/edge/mediapipe/solutions/genai/llm_inference#models) | 🚧 Pending |
 
 ## Quick Start
@@ -197,6 +197,8 @@ The language codes follow the FLORES200 format. See the [FLORES200 language list
 
 Generate text from prompts using language models.
 
+### Transformers.js Provider
+
 ```bash
 curl -X POST http://localhost:9002/api/v1/text-generation \
   -F 'input=[{"role":"system","content":"You are a helpful assistant."},{"role":"user","content":"What is the capital of Brazil?"}]' \
@@ -223,6 +225,33 @@ curl -X POST http://localhost:9002/api/v1/text-generation \
 | top_p | number | 1.0 | If < 1, only tokens with probabilities adding up to top_p or higher are kept |
 | repetition_penalty | number | 1.0 | Parameter for repetition penalty. 1.0 means no penalty |
 | no_repeat_ngram_size | number | 0 | If > 0, all ngrams of that size can only occur once |
+
+### WebLLM Provider
+
+When using the WebLLM provider, you need to specify it in your request. Here's an example:
+
+```bash
+curl -X POST http://localhost:9002/api/v1/text-generation \
+  -F 'input=[{"role":"system","content":"You are a helpful assistant."},{"role":"user","content":"What is the capital of Brazil?"}]' \
+  -F "model=DeepSeek-R1-Distill-Qwen-7B-q4f16_1-MLC" \
+  -F "provider=webllm" \
+  -F "temperature=0.7" \
+  -F "top_p=0.95"
+```
+
+#### Parameters
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| context_window_size | number | Size of the context window for the model |
+| sliding_window_size | number | Size of the sliding window for attention |
+| attention_sink_size | number | Size of the attention sink |
+| repetition_penalty | number | Penalty for repeating tokens |
+| frequency_penalty | number | Penalty for token frequency |
+| presence_penalty | number | Penalty for token presence |
+| top_p | number | If < 1, only tokens with probabilities adding up to top_p or higher are kept |
+| temperature | number | Value used to modulate the next token probabilities |
+| bos_token_id | number | Beginning of sequence token ID (optional) |
 
 For additional advanced parameters, refer to the [Transformers.js documentation](https://huggingface.co/docs/transformers.js/api/generation).
 
