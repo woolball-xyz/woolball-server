@@ -265,7 +265,6 @@ curl -X POST http://localhost:9002/api/v1/text-generation \
 | temperature | number | Value used to modulate the next token probabilities |
 | bos_token_id | number | Beginning of sequence token ID (optional) |
 
-For additional advanced parameters, refer to the [Transformers.js documentation](https://huggingface.co/docs/transformers.js/api/generation).
 
 </details>
 
