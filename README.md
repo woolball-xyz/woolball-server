@@ -243,6 +243,8 @@ curl -X POST http://localhost:9002/api/v1/text-generation \
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
+| model | string | Model ID from MLC (e.g., "DeepSeek-R1-Distill-Qwen-7B-q4f16_1-MLC") |
+| provider | string | Must be set to "webllm" when using WebLLM models |
 | context_window_size | number | Size of the context window for the model |
 | sliding_window_size | number | Size of the sliding window for attention |
 | attention_sink_size | number | Size of the attention sink |
