@@ -6,7 +6,7 @@
 WoolBall turns **idle browsers into inference nodes**.  
 
 This repository contains the open-source **network server** that dispatches jobs to those nodes; 
-> the client lives in [`woolball-client`](https://github.com/woolball-xyz/woolball-client).
+> Client side is available in [`woolball-client`](https://github.com/woolball-xyz/woolball-client).
 
 [Next steps](https://github.com/woolball-xyz/woolball-server/issues)
 ---
@@ -53,7 +53,8 @@ The API is available at `http://localhost:9002` with the following endpoints:
 | `/api/v1/translation` | Translate text between languages |
 | `/api/v1/text-generation` | Generate text from prompts |
 
-## Speech Recognition
+<details>
+<summary>🎤 Speech Recognition</summary>
 
 Convert audio files to text using Whisper models.
 
@@ -105,7 +106,10 @@ curl -X POST http://localhost:9002/api/v1/speech-recognition \
 | task                 | null \| 'transcribe' \| 'translate' | The task to perform. Default is `null`, meaning it should be auto-detected. |
 | num_frames           | number                        | The number of frames in the input audio. |
 
-## Text-to-Speech
+</details>
+
+<details>
+<summary>🔊 Text-to-Speech</summary>
 
 Convert text to speech using different TTS engines.
 
@@ -169,7 +173,10 @@ Kokoro supports various voices with different accents and genders:
 - British Female: `bf_emma`, `bf_isabella`, `bf_alice`, `bf_lily`
 - British Male: `bm_george`, `bm_lewis`, `bm_daniel`, `bm_fable`
 
-## Translation
+</details>
+
+<details>
+<summary>🌐 Translation</summary>
 
 Translate text between languages using NLLB models.
 
@@ -193,7 +200,10 @@ curl -X POST http://localhost:9002/api/v1/translation \
 
 The language codes follow the FLORES200 format. See the [FLORES200 language list](https://github.com/facebookresearch/flores/blob/main/flores200/README.md#languages-in-flores-200) for all available language options.
 
-## Text Generation
+</details>
+
+<details>
+<summary>🤖 Text Generation</summary>
 
 Generate text from prompts using language models.
 
@@ -256,6 +266,8 @@ curl -X POST http://localhost:9002/api/v1/text-generation \
 | bos_token_id | number | Beginning of sequence token ID (optional) |
 
 For additional advanced parameters, refer to the [Transformers.js documentation](https://huggingface.co/docs/transformers.js/api/generation).
+
+</details>
 
 ## Local Development
 
