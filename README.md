@@ -106,7 +106,7 @@ Convert text to speech using different TTS engines.
 
 ### Transformers.js (MMS Models)
 
-Uses Multilingual Massively Speech (MMS) models from Transformers.js for various languages.
+Uses Massively Multilingual Speech (MMS) models from Transformers.js for various languages.
 
 ```bash
 # Standard request
