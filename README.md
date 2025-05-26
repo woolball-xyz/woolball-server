@@ -453,7 +453,7 @@ cd woolball-server && docker compose up --build -d
 
 ### 🔄 Network Flow
 
-![Network Architecture](current.png)
+![Network Architecture](.github/current.png)
 
 ---
 
