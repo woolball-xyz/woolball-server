@@ -112,7 +112,7 @@ curl -X POST http://localhost:9002/api/v1/text-generation \
 
 ## 📖 API Reference
 
-### 🤖 Text Generation
+### 📖 Text Generation
 
 <details>
 <summary><strong>Generate text with powerful language models</strong></summary>
