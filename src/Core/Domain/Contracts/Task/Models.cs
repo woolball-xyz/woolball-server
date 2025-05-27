@@ -2,8 +2,6 @@ using System.Text.Json.Serialization;
 
 namespace Domain.Contracts;
 
-
-
 public sealed class TaskResponseBody
 {
     public string Type { get; set; } = string.Empty;

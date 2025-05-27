@@ -292,7 +292,12 @@ namespace Domain.Utilities
 
                 if (process.ExitCode == 0 && !string.IsNullOrWhiteSpace(output))
                 {
-                    return Regex.IsMatch(output, "audio", RegexOptions.IgnoreCase, TimeSpan.FromMilliseconds(100));
+                    return Regex.IsMatch(
+                        output,
+                        "audio",
+                        RegexOptions.IgnoreCase,
+                        TimeSpan.FromMilliseconds(100)
+                    );
                 }
 
                 return false;

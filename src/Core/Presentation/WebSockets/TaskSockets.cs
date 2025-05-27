@@ -95,7 +95,7 @@ public static class TaskSockets
                             data,
                             new JsonSerializerOptions { PropertyNameCaseInsensitive = true }
                         );
-                        
+
                         var response = new TaskResponse
                         {
                             NodeId = id,
@@ -110,7 +110,9 @@ public static class TaskSockets
                     catch (Exception ex)
                     {
                         // should redistribute
-                        Console.WriteLine($"[ReceiveAsync] Error processing task response: {ex.Message}");
+                        Console.WriteLine(
+                            $"[ReceiveAsync] Error processing task response: {ex.Message}"
+                        );
                     }
                 }
 

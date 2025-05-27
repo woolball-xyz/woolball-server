@@ -43,11 +43,11 @@ public class WebSocketNodesQueue
     {
         // Create unique connection ID to avoid conflicts with multiple connections from same node
         var connectionId = $"{nodeId}_{Guid.NewGuid():N}";
-        
+
         _activeConnections.TryAdd(connectionId, socket);
         var newCount = Interlocked.Increment(ref _connectionCount);
         await BroadcastNodeCountAsync(newCount);
-        
+
         return connectionId;
     }
 
@@ -116,7 +116,7 @@ public class WebSocketNodesQueue
                 {
                     var finalMessage = $"node_count:{adjustedCount}";
                     var finalMessageBytes = Encoding.UTF8.GetBytes(finalMessage);
-                    
+
                     foreach (var kvp in _activeConnections.ToArray())
                     {
                         try

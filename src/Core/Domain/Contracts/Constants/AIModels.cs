@@ -13,7 +13,7 @@ public static class AvailableModels
     public static readonly string TextToSpeech = "text-to-speech";
     public static readonly string Translation = "translation";
 
-    private static readonly List<string>  _dict = new List<string>
+    private static readonly List<string> _dict = new List<string>
     {
         SpeechToText,
         TextToSpeech,
@@ -85,4 +85,3 @@ public class TranslationModel : BaseModel
 {
     public List<string> SupportedLanguages { get; set; } = new();
 }
-
