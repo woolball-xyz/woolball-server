@@ -43,6 +43,7 @@ public static class TaskSockets
         var webSocket = await context.WebSockets.AcceptWebSocketAsync();
 
         await webSocketNodesQueue.AddWebsocketInQueueAsync(id, webSocket);
+        var connectionId = await webSocketNodesQueue.AddConnectionAsync(id, webSocket);
 
         var buffer = new byte[1024 * 4];
         WebSocketReceiveResult result;
@@ -143,6 +144,10 @@ public static class TaskSockets
                     cancellationToken
                 );
             }
+        }
+        finally
+        {
+            await webSocketNodesQueue.RemoveConnectionAsync(connectionId);
         }
     }
 }
