@@ -125,8 +125,8 @@ curl -X POST http://localhost:9002/api/v1/text-generation \
 |-------|--------------|-------------|
 | `HuggingFaceTB/SmolLM2-135M-Instruct` | `fp16` | Compact model for basic text generation |
 | `HuggingFaceTB/SmolLM2-360M-Instruct` | `q4` | Balanced performance and size |
-| `Xenova/Qwen2.5-0.5B-Instruct` | `q4` | Efficient model for general tasks |
-| `Xenova/Qwen2.5-Coder-0.5B-Instruct` | `q8` | Specialized for code generation |
+| `Mozilla/Qwen2.5-0.5B-Instruct` | `q4` | Efficient model for general tasks |
+| `onnx-community/Qwen2.5-Coder-0.5B-Instruct` | `q8` | Specialized for code generation |
 
 #### 💡 Example Usage
 
