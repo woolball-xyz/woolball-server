@@ -23,7 +23,6 @@ public static class DependencyInjection
 
     public static IEndpointRouteBuilder AddEndPoints(this IEndpointRouteBuilder app)
     {
-        app.AddHealthCheckEndPoints();
         app.AddTasksEndPoints();
 
         return app;

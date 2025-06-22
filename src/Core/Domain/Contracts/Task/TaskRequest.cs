@@ -246,7 +246,48 @@ public class TaskRequest
     public Dictionary<string, object> Kwargs { get; set; }
     public Dictionary<string, object> PrivateArgs { get; set; }
 
-    public static async Task<TaskRequest> Create(IFormCollection form, string task)
+    public static async Task<TaskRequest> Create(object requestDto, string task)
+    {
+        if (!AvailableModels.IsValidTask(task))
+        {
+            throw new InvalidOperationException($"Task '{task}' is not supported");
+        }
+
+        string officialTask = GetOfficialTaskType(task);
+
+        var request = new TaskRequest
+        {
+            Task = officialTask,
+            Kwargs = new Dictionary<string, object>(),
+            PrivateArgs = new Dictionary<string, object>()
+        };
+
+        request.Kwargs["type"] = "PROCESS_EVENT";
+        request.Kwargs["task"] = officialTask;
+
+        if (requestDto != null)
+        {
+            foreach (var prop in requestDto.GetType().GetProperties())
+            {
+                var value = prop.GetValue(requestDto);
+                if (value != null)
+                {
+                    var key = char.ToLowerInvariant(prop.Name[0]) + prop.Name.Substring(1);
+                    request.Kwargs[key] = value;
+                }
+            }
+        }
+
+        if (TaskHandlerFactory.HasHandler(officialTask))
+        {
+            var handler = TaskHandlerFactory.GetHandler(officialTask);
+            await handler.ProcessInput(request, null);
+        }
+
+        return request;
+    }
+
+    public static async Task<TaskRequest> CreateFromForm(IFormCollection form, string task)
     {
         // Validate that the task is supported
         if (!AvailableModels.IsValidTask(task))
