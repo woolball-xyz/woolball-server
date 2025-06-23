@@ -1,6 +1,7 @@
 using System.ComponentModel.DataAnnotations;
 using Microsoft.AspNetCore.Http;
 using System.ComponentModel;
+using System.Text.Json.Serialization;
 
 namespace Presentation.Models;
 
@@ -40,31 +41,31 @@ public class SpeechToTextRequest : BaseTaskRequest
     /// <summary>
     /// Return timestamps ("word" for word-level timestamps, true for segment-level, false for none)
     /// </summary>
-    [DefaultValue(false)]
-    public object? ReturnTimestamps { get; set; } = false;
+    [JsonPropertyName("return_timestamps")]
+    public object? ReturnTimestamps { get; set; }
 
     /// <summary>
     /// Stream results in real-time
     /// </summary>
-    [DefaultValue(false)]
-    public bool Stream { get; set; } = false;
+    public bool? Stream { get; set; }
 
     /// <summary>
     /// Length of audio chunks to process in seconds (0 = no chunking)
     /// </summary>
-    [DefaultValue(0)]
-    public int ChunkLengthS { get; set; } = 0;
+    [JsonPropertyName("chunk_length_s")]
+    public int ChunkLengthS { get; set; }
 
     /// <summary>
     /// Length of overlap between consecutive audio chunks in seconds
     /// </summary>
+    [JsonPropertyName("stride_length_s")]
     public int? StrideLengthS { get; set; }
 
     /// <summary>
     /// Whether to force outputting full sequences
     /// </summary>
-    [DefaultValue(false)]
-    public bool ForceFullSequences { get; set; } = false;
+    [JsonPropertyName("force_full_sequences")]
+    public bool? ForceFullSequences { get; set; }
 
     /// <summary>
     /// The task to perform ("transcribe" or "translate")
@@ -74,6 +75,7 @@ public class SpeechToTextRequest : BaseTaskRequest
     /// <summary>
     /// The number of frames in the input audio
     /// </summary>
+    [JsonPropertyName("num_frames")]
     public int? NumFrames { get; set; }
 }
 
@@ -86,7 +88,7 @@ public class TextToSpeechRequest : BaseTaskRequest
     /// Text to convert to speech
     /// </summary>
     [Required]
-    public string Input { get; set; } = string.Empty;
+    public string Input { get; set; }
 
     /// <summary>
     /// Quantization level for the model (e.g., "q8")
@@ -101,8 +103,7 @@ public class TextToSpeechRequest : BaseTaskRequest
     /// <summary>
     /// Whether to stream the audio response
     /// </summary>
-    [DefaultValue(false)]
-    public bool Stream { get; set; } = false;
+    public bool? Stream { get; set; }
 }
 
 /// <summary>
@@ -114,19 +115,21 @@ public class TranslationRequest : BaseTaskRequest
     /// Text to translate
     /// </summary>
     [Required]
-    public string Input { get; set; } = string.Empty;
+    public string Input { get; set; }
 
     /// <summary>
     /// Source language code in FLORES200 format (e.g., "eng_Latn")
     /// </summary>
     [Required]
-    public string SrcLang { get; set; } = string.Empty;
+    [JsonPropertyName("srcLang")]
+    public string SrcLang { get; set; }
 
     /// <summary>
     /// Target language code in FLORES200 format (e.g., "por_Latn")
     /// </summary>
     [Required]
-    public string TgtLang { get; set; } = string.Empty;
+    [JsonPropertyName("tgtLang")]
+    public string TgtLang { get; set; }
 
     /// <summary>
     /// Quantization level for the model (e.g., "q8")
@@ -135,15 +138,26 @@ public class TranslationRequest : BaseTaskRequest
 }
 
 /// <summary>
-/// Request model for Text Generation tasks using Transformers.js
+/// Base model for all Text Generation requests
 /// </summary>
-public class TextGenerationTransformersRequest : BaseTaskRequest
+[JsonPolymorphic(TypeDiscriminatorPropertyName = "$type")]
+[JsonDerivedType(typeof(TextGenerationTransformersRequest), "transformers")]
+[JsonDerivedType(typeof(TextGenerationWebLLMRequest), "webllm")]
+[JsonDerivedType(typeof(TextGenerationMediaPipeRequest), "mediapipe")]
+public abstract class TextGenerationBaseRequest : BaseTaskRequest
 {
     /// <summary>
     /// Input messages in chat format or simple text prompt
     /// </summary>
     [Required]
-    public string Input { get; set; } = string.Empty;
+    public string Input { get; set; }
+}
+
+/// <summary>
+/// Request model for Text Generation tasks using Transformers.js
+/// </summary>
+public class TextGenerationTransformersRequest : TextGenerationBaseRequest
+{
 
     /// <summary>
     /// Quantization level (e.g., "fp16", "q4", "q8")
@@ -153,119 +167,115 @@ public class TextGenerationTransformersRequest : BaseTaskRequest
     /// <summary>
     /// Maximum length the generated tokens can have (includes input prompt)
     /// </summary>
-    [DefaultValue(20)]
-    public int MaxLength { get; set; } = 20;
+    [JsonPropertyName("max_length")]
+    public int? MaxLength { get; set; }
 
     /// <summary>
     /// Maximum number of tokens to generate, ignoring prompt length
     /// </summary>
+    [JsonPropertyName("max_new_tokens")]
     public int? MaxNewTokens { get; set; }
 
     /// <summary>
     /// Minimum length of the sequence to be generated (includes input prompt)
     /// </summary>
-    [DefaultValue(0)]
-    public int MinLength { get; set; } = 0;
+    [JsonPropertyName("min_length")]
+    public int? MinLength { get; set; }
 
     /// <summary>
     /// Minimum numbers of tokens to generate, ignoring prompt length
     /// </summary>
+    [JsonPropertyName("min_new_tokens")]
     public int? MinNewTokens { get; set; }
 
     /// <summary>
     /// Whether to use sampling; use greedy decoding otherwise
     /// </summary>
-    [DefaultValue(false)]
-    public bool DoSample { get; set; } = false;
+    [JsonPropertyName("do_sample")]
+    public bool? DoSample { get; set; }
 
     /// <summary>
     /// Number of beams for beam search. 1 means no beam search
     /// </summary>
-    [DefaultValue(1)]
-    public int NumBeams { get; set; } = 1;
+    [JsonPropertyName("num_beams")]
+    public int? NumBeams { get; set; }
 
     /// <summary>
     /// Value used to modulate the next token probabilities
     /// </summary>
-    [DefaultValue(1.0)]
-    public double Temperature { get; set; } = 1.0;
+    public double? Temperature { get; set; }
 
     /// <summary>
     /// Number of highest probability vocabulary tokens to keep for top-k-filtering
     /// </summary>
-    [DefaultValue(50)]
-    public int TopK { get; set; } = 50;
+    [JsonPropertyName("top_k")]
+    public int? TopK { get; set; }
 
     /// <summary>
     /// If < 1, only tokens with probabilities adding up to top_p or higher are kept
     /// </summary>
-    [DefaultValue(1.0)]
-    public double TopP { get; set; } = 1.0;
+    [JsonPropertyName("top_p")]
+    public double? TopP { get; set; }
 
     /// <summary>
     /// Parameter for repetition penalty. 1.0 means no penalty
     /// </summary>
-    [DefaultValue(1.0)]
-    public double RepetitionPenalty { get; set; } = 1.0;
+    [JsonPropertyName("repetition_penalty")]
+    public double? RepetitionPenalty { get; set; }
 
     /// <summary>
     /// If > 0, all ngrams of that size can only occur once
     /// </summary>
-    [DefaultValue(0)]
-    public int NoRepeatNgramSize { get; set; } = 0;
+    [JsonPropertyName("no_repeat_ngram_size")]
+    public int? NoRepeatNgramSize { get; set; }
 }
 
 /// <summary>
 /// Request model for Text Generation tasks using WebLLM
 /// </summary>
-public class TextGenerationWebLLMRequest : BaseTaskRequest
+public class TextGenerationWebLLMRequest : TextGenerationBaseRequest
 {
-    /// <summary>
-    /// Input messages in chat format
-    /// </summary>
-    [Required]
-    public string Input { get; set; } = string.Empty;
-
-    /// <summary>
-    /// Must be set to "webllm" when using WebLLM models
-    /// </summary>
-    [Required]
-    [DefaultValue("webllm")]
-    public string Provider { get; set; } = "webllm";
 
     /// <summary>
     /// Size of the context window for the model
     /// </summary>
+    [JsonPropertyName("context_window_size")]
     public int? ContextWindowSize { get; set; }
 
     /// <summary>
     /// Size of the sliding window for attention
     /// </summary>
+    [JsonPropertyName("sliding_window_size")]
     public int? SlidingWindowSize { get; set; }
 
     /// <summary>
     /// Size of the attention sink
     /// </summary>
+    [JsonPropertyName("attention_sink_size")]
     public int? AttentionSinkSize { get; set; }
 
     /// <summary>
     /// Penalty for repeating tokens
     /// </summary>
+    [JsonPropertyName("repetition_penalty")]
     public double? RepetitionPenalty { get; set; }
 
     /// <summary>
     /// Penalty for token frequency
     /// </summary>
+    [JsonPropertyName("frequency_penalty")]
     public double? FrequencyPenalty { get; set; }
 
     /// <summary>
     /// Penalty for token presence
     /// </summary>
+    [JsonPropertyName("presence_penalty")]
     public double? PresencePenalty { get; set; }
 
     /// <summary>
     /// If < 1, only tokens with probabilities adding up to top_p or higher are kept
     /// </summary>
+    [JsonPropertyName("top_p")]
     public double? TopP { get; set; }
 
     /// <summary>
@@ -276,35 +286,26 @@ public class TextGenerationWebLLMRequest : BaseTaskRequest
     /// <summary>
     /// Beginning of sequence token ID
     /// </summary>
+    [JsonPropertyName("bos_token_id")]
     public int? BosTokenId { get; set; }
 }
 
 /// <summary>
 /// Request model for Text Generation tasks using MediaPipe
 /// </summary>
-public class TextGenerationMediaPipeRequest : BaseTaskRequest
+public class TextGenerationMediaPipeRequest : TextGenerationBaseRequest
 {
-    /// <summary>
-    /// Input messages in chat format
-    /// </summary>
-    [Required]
-    public string Input { get; set; } = string.Empty;
-
-    /// <summary>
-    /// Must be set to "mediapipe" when using MediaPipe models
-    /// </summary>
-    [Required]
-    [DefaultValue("mediapipe")]
-    public string Provider { get; set; } = "mediapipe";
 
     /// <summary>
     /// Maximum number of tokens to generate
     /// </summary>
+    [JsonPropertyName("max_tokens")]
     public int? MaxTokens { get; set; }
 
     /// <summary>
     /// Random seed for reproducible results
     /// </summary>
+    [JsonPropertyName("random_seed")]
     public int? RandomSeed { get; set; }
 
     /// <summary>

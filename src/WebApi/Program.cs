@@ -9,6 +9,7 @@ using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Presentation;
+using Presentation.Models;
 using WebApi;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -53,6 +54,22 @@ For detailed examples and model lists, visit our [GitHub repository](https://git
     c.EnableAnnotations();
     c.DescribeAllParametersInCamelCase();
     
+    // Enable polymorphism support for System.Text.Json with custom filters
+    c.UseOneOfForPolymorphism();
+    c.UseAllOfForInheritance();
+    c.SelectDiscriminatorNameUsing(baseType => "$type");
+    c.SelectDiscriminatorValueUsing(subType => subType.Name switch
+    {
+        nameof(TextGenerationTransformersRequest) => "transformers",
+        nameof(TextGenerationWebLLMRequest) => "webllm",
+        nameof(TextGenerationMediaPipeRequest) => "mediapipe",
+        _ => subType.Name
+    });
+    
+    // Add custom filters for JsonPolymorphic support
+    c.SchemaFilter<JsonPolymorphicSchemaFilter>();
+    c.DocumentFilter<JsonPolymorphicDocumentFilter>();
+    
     // Add examples for better documentation
     c.SchemaFilter<SwaggerSchemaExampleFilter>();
     
@@ -88,7 +105,8 @@ builder.Services.AddRateLimiter(_ =>
 );
 
 builder.Services
- .AddRedis(builder.Configuration)
+.AddRedis(builder.Configuration)  // Temporarily disabled for testing
+ 
  .AddApplication();
 
 var app = builder.Build();
@@ -99,8 +117,8 @@ app.UseRateLimiter();
 
 app.AddEndPoints();
 
-if (app.Environment.IsDevelopment())
-{
+// if (app.Environment.IsDevelopment())
+// {
     app.UseSwagger();
     app.UseSwaggerUI(c =>
     {
@@ -116,7 +134,8 @@ if (app.Environment.IsDevelopment())
         c.EnableValidator();
        
     });
-}
+
+// }
 
 app.UseHttpsRedirection();
 

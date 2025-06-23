@@ -1,7 +1,6 @@
 using System.Text;
 using System.Text.Json;
 using Application.Logic;
-using Contracts.Constants;
 using Domain.Contracts;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
@@ -26,7 +25,7 @@ public static class TasksEndPoints
             .WithSummary("Convert audio to text using Whisper models")
             .WithDescription("Transcribe audio files to text using state-of-the-art speech recognition models. Supports various audio formats and languages.")
             .Accepts<SpeechToTextRequest>("multipart/form-data")
-            .Produces<TaskResponse>(200)
+            .Produces<List<STTChunk>>(200)
             .Produces<object>(400)
             .RequireRateLimiting("fixed")
             .WithOpenApi(operation => new OpenApiOperation(operation)
@@ -42,7 +41,7 @@ public static class TasksEndPoints
             .WithSummary("Generate natural speech from text")
             .WithDescription("Convert text to natural-sounding speech using MMS or Kokoro models. Supports multiple languages and voices.")
             .Accepts<TextToSpeechRequest>("application/json")
-            .Produces<TaskResponse>(200)
+            .Produces<List<TTSResponse>>(200)
             .Produces<object>(400)
             .RequireRateLimiting("fixed")
             .WithOpenApi(operation => new OpenApiOperation(operation)
@@ -58,7 +57,7 @@ public static class TasksEndPoints
             .WithSummary("Translate between 200+ languages")
             .WithDescription("Translate text between over 200 languages using NLLB models with FLORES200 language codes.")
             .Accepts<TranslationRequest>("application/json")
-            .Produces<TaskResponse>(200)
+            .Produces<TranslationResponse>(200)
             .Produces<object>(400)
             .RequireRateLimiting("fixed")
             .WithOpenApi(operation => new OpenApiOperation(operation)
@@ -73,27 +72,26 @@ public static class TasksEndPoints
             .WithName("TextGeneration")
             .WithSummary("Generate text with language models")
             .WithDescription("Generate text using various providers: Transformers.js, WebLLM, or MediaPipe. Supports different model types and parameters.")
-            .Accepts<TextGenerationTransformersRequest>("application/json")
-            .Produces<TaskResponse>(200)
+            .Accepts<TextGenerationBaseRequest>("application/json")
+            .Produces<GenerationResponse>(200)
             .Produces<object>(400)
             .RequireRateLimiting("fixed")
             .WithOpenApi(operation => new OpenApiOperation(operation)
             {
                 Summary = "Text Generation",
-                Description = "Generate text using powerful language models. Supports Transformers.js, WebLLM, and MediaPipe providers with various model configurations.",
+                Description = "Generate text using powerful language models. Supports Transformers.js, WebLLM, and MediaPipe providers with various model configurations. Use the 'provider' field to select which provider-specific fields to show.",
                 Tags = new List<OpenApiTag> { new() { Name = "Text Generation" } }
             });
 
     }
 
-    public static async Task HandleSpeechToText(
-        [FromForm] SpeechToTextRequest request,
+    private static async Task HandleSpeechToText(
         HttpContext context,
         [FromServices] ITaskBusinessLogic logic,
         CancellationToken cancellationToken
     )
     {
-        await HandleTaskInternal("speech-recognition", context, logic, request ,cancellationToken);
+        await HandleTaskInternalFromForm("speech-to-text", context, logic, cancellationToken);
     }
 
     public static async Task HandleTextToSpeech(
@@ -117,13 +115,36 @@ public static class TasksEndPoints
     }
 
     public static async Task HandleTextGeneration(
-        [FromBody] TextGenerationTransformersRequest request,
+        [FromBody] TextGenerationBaseRequest request,
         HttpContext context,
         [FromServices] ITaskBusinessLogic logic,
         CancellationToken cancellationToken
     )
     {
         await HandleTaskInternal("text-generation", context, logic, request, cancellationToken);
+    }
+
+    private static async Task HandleTaskInternalFromForm(
+        string task,
+        HttpContext context,
+        ITaskBusinessLogic logic,
+        CancellationToken cancellationToken
+    )
+    {
+        try
+        {
+            var request = await TaskRequest.CreateFromForm(context.Request.Form, task);
+            await ProcessTaskRequest(request, context, logic, cancellationToken);
+        }
+        catch (Exception e)
+        {
+            Console.WriteLine(e);
+            context.Response.StatusCode = 500;
+            await context.Response.WriteAsync(
+                JsonSerializer.Serialize(new { error = "internal error" }),
+                cancellationToken
+            );
+        }
     }
 
     private static async Task HandleTaskInternal(
@@ -137,91 +158,7 @@ public static class TasksEndPoints
         try
         {
             var request = await TaskRequest.Create(initialRequest, task);
-
-            if (request == null)
-            {
-                context.Response.StatusCode = 400;
-                await context.Response.WriteAsync(
-                    JsonSerializer.Serialize(new { error = "Invalid request." }),
-                    cancellationToken
-                );
-                return;
-            }
-
-            var (result, error) = request.IsValidFields();
-            if (!result)
-            {
-                context.Response.StatusCode = 400;
-                await context.Response.WriteAsync(JsonSerializer.Serialize(new { error }), cancellationToken);
-                return;
-            }
-
-            if (!await logic.PublishPreProcessingQueueAsync(request))
-            {
-                context.Response.StatusCode = 503;
-                await context.Response.WriteAsync(
-                    JsonSerializer.Serialize(
-                        new
-                        {
-                            error = "Unable to process request due to queue service unavailability",
-                        }
-                    ),
-                    cancellationToken
-                );
-                return;
-            }
-
-            bool isStreaming =
-                request.Kwargs.ContainsKey("stream")
-                && request.Kwargs["stream"].ToString().ToLower() == "true";
-
-            if (isStreaming)
-            {
-                context.Response.ContentType = "text/plain";
-
-                await foreach (
-                    var message in logic.StreamTaskResultAsync(request, cancellationToken)
-                )
-                {
-                    var bytes = Encoding.UTF8.GetBytes(message + "\n");
-                    await context.Response.Body.WriteAsync(bytes, 0, bytes.Length, cancellationToken);
-                    await context.Response.Body.FlushAsync(cancellationToken);
-                }
-
-                context.Response.Body.Close();
-            }
-            else
-            {
-                var response = await logic.AwaitTaskResultAsync(request);
-                if (!string.IsNullOrEmpty(response))
-                {
-                    if (
-                        response.Contains("\"Status\":\"Error\"") || response.Contains("\"error\":")
-                    )
-                    {
-                        context.Response.StatusCode = 500;
-                        context.Response.ContentType = "application/json";
-                        await context.Response.WriteAsync(response, cancellationToken);
-                    }
-                    else
-                    {
-                        context.Response.StatusCode = 200;
-                        context.Response.ContentType = "application/json";
-                        await context.Response.WriteAsync(response, cancellationToken);
-                    }
-                }
-                else
-                {
-                    context.Response.StatusCode = 500;
-                    await context.Response.WriteAsync(
-                        JsonSerializer.Serialize(
-                            new { error = "Could not get response from service" }
-                        ),
-                        cancellationToken
-                    );
-                }
-            }
-            return;
+            await ProcessTaskRequest(request, context, logic, cancellationToken);
         }
         catch (Exception e)
         {
@@ -231,7 +168,99 @@ public static class TasksEndPoints
                 JsonSerializer.Serialize(new { error = "internal error" }),
                 cancellationToken
             );
+        }
+    }
+
+    private static async Task ProcessTaskRequest(
+        TaskRequest? request,
+        HttpContext context,
+        ITaskBusinessLogic logic,
+        CancellationToken cancellationToken
+    )
+    {
+        if (request == null)
+        {
+            context.Response.StatusCode = 400;
+            await context.Response.WriteAsync(
+                JsonSerializer.Serialize(new { error = "Invalid request." }),
+                cancellationToken
+            );
             return;
+        }
+
+        var (result, error) = request.IsValidFields();
+        if (!result)
+        {
+            context.Response.StatusCode = 400;
+            await context.Response.WriteAsync(JsonSerializer.Serialize(new { error }), cancellationToken);
+            return;
+        }
+
+        if (!await logic.PublishPreProcessingQueueAsync(request))
+        {
+            context.Response.StatusCode = 503;
+            await context.Response.WriteAsync(
+                JsonSerializer.Serialize(
+                    new
+                    {
+                        error = "Unable to process request due to queue service unavailability",
+                    }
+                ),
+                cancellationToken
+            );
+            return;
+        }
+
+        bool isStreaming =
+            request.Kwargs.ContainsKey("stream")
+            && request.Kwargs["stream"].ToString().ToLower() == "true";
+
+        if (isStreaming)
+        {
+            context.Response.ContentType = "text/plain";
+
+            await foreach (
+                var message in logic.StreamTaskResultAsync(request, cancellationToken)
+            )
+            {
+                var bytes = Encoding.UTF8.GetBytes(message + "\n");
+                await context.Response.Body.WriteAsync(bytes, 0, bytes.Length, cancellationToken);
+                await context.Response.Body.FlushAsync(cancellationToken);
+            }
+
+            context.Response.Body.Close();
+        }
+        else
+        {
+            var response = await logic.AwaitTaskResultAsync(request);
+            if (!string.IsNullOrEmpty(response))
+            {
+                if (
+                    response.Contains("\"Status\":\"Error\"")
+                    || response.Contains("\"error\":")
+                )
+                {
+                    context.Response.StatusCode = 500;
+                    context.Response.ContentType = "application/json";
+                    await context.Response.WriteAsync(response, cancellationToken);
+                }
+                else
+                {
+                    context.Response.StatusCode = 200;
+                    context.Response.ContentType = "application/json";
+                    await context.Response.WriteAsync(response, cancellationToken);
+                }
+            }
+            else
+            {
+                context.Response.StatusCode = 500;
+                await context.Response.WriteAsync(
+                    JsonSerializer.Serialize(
+                        new { error = "Could not get response from service" }
+                    ),
+                    cancellationToken
+                );
+            }
         }
     }
 }

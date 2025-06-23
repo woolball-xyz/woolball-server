@@ -308,7 +308,11 @@ public class TaskRequest
 
         foreach (var key in form.Keys)
         {
-            request.Kwargs[key] = form[key][0];
+            var value = form[key][0];
+            if (!string.IsNullOrEmpty(value))
+            {
+                request.Kwargs[key] = value;
+            }
         }
 
         // Use the official task type for handler lookup
