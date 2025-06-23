@@ -1,6 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Domain.Contracts;
+using Domain.Contracts.Task.TextGeneration;
 using StackExchange.Redis;
 
 namespace Application.Logic;
@@ -24,13 +25,13 @@ public sealed class TextGenerationLogic : ITextGenerationLogic
             {
                 await subscriber.PublishAsync(
                     RedisChannel.Literal(resultQueueName),
-                    JsonSerializer.Serialize(new GenerationResponse { GeneratedText = "" })
+                    JsonSerializer.Serialize(new TextGenerationResponse { GeneratedText = "" })
                 );
 
                 return;
             }
 
-            GenerationResponse generationResponse;
+            TextGenerationResponse generationResponse;
 
             try
             {
@@ -43,7 +44,7 @@ public sealed class TextGenerationLogic : ITextGenerationLogic
                     );
                     return;
                 }
-                else if (responseData.Response is GenerationResponse directResponse)
+                else if (responseData.Response is TextGenerationResponse directResponse)
                 {
                     generationResponse = directResponse;
                 }
@@ -51,16 +52,16 @@ public sealed class TextGenerationLogic : ITextGenerationLogic
                 {
                     string jsonStr = JsonSerializer.Serialize(responseData.Response);
                     generationResponse =
-                        JsonSerializer.Deserialize<GenerationResponse>(jsonStr)
-                        ?? new GenerationResponse { GeneratedText = "" };
+                    JsonSerializer.Deserialize<TextGenerationResponse>(jsonStr)
+                    ?? new TextGenerationResponse { GeneratedText = "" };
                 }
             }
             catch (Exception ex)
             {
                 Console.WriteLine(
-                    $"[TextGenerationLogic] Error extracting GenerationResponse: {ex.Message}"
+                    $"[TextGenerationLogic] Error extracting TextGenerationResponse: {ex.Message}"
                 );
-                generationResponse = new GenerationResponse { GeneratedText = "" };
+                generationResponse = new TextGenerationResponse { GeneratedText = "" };
             }
 
             var serializedData = JsonSerializer.Serialize(generationResponse);
@@ -76,7 +77,7 @@ public sealed class TextGenerationLogic : ITextGenerationLogic
 
                 await subscriber.PublishAsync(
                     RedisChannel.Literal(resultQueueName),
-                    JsonSerializer.Serialize(new GenerationResponse { GeneratedText = "" })
+                    JsonSerializer.Serialize(new TextGenerationResponse { GeneratedText = "" })
                 );
 
                 Console.WriteLine($"[TextGenerationLogic] Sent error response to prevent retries");

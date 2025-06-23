@@ -9,8 +9,8 @@ using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Presentation;
-using Presentation.Models;
 using WebApi;
+using WebApi.Filters;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -57,21 +57,14 @@ For detailed examples and model lists, visit our [GitHub repository](https://git
     // Enable polymorphism support for System.Text.Json with custom filters
     c.UseOneOfForPolymorphism();
     c.UseAllOfForInheritance();
-    c.SelectDiscriminatorNameUsing(baseType => "$type");
-    c.SelectDiscriminatorValueUsing(subType => subType.Name switch
-    {
-        nameof(TextGenerationTransformersRequest) => "transformers",
-        nameof(TextGenerationWebLLMRequest) => "webllm",
-        nameof(TextGenerationMediaPipeRequest) => "mediapipe",
-        _ => subType.Name
-    });
-    
-    // Add custom filters for JsonPolymorphic support
-    c.SchemaFilter<JsonPolymorphicSchemaFilter>();
-    c.DocumentFilter<JsonPolymorphicDocumentFilter>();
+    // Removed all polymorphic JSON configurations as we now use separate endpoints for each provider
     
     // Add examples for better documentation
-    c.SchemaFilter<SwaggerSchemaExampleFilter>();
+    c.SchemaFilter<SwaggerExamplesFilter>();
+    
+    // Add custom document filters for oneOf schemas
+    c.DocumentFilter<TextGenerationSchemaFilter>();
+    c.DocumentFilter<SpeechToTextSchemaFilter>();
     
     // Group endpoints by tags based on action display name
     c.TagActionsBy(api => 

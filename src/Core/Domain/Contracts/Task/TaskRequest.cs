@@ -108,7 +108,84 @@ public class SpeechToTextTaskHandler : ITaskHandler
             await file.CopyToAsync(stream);
             request.Kwargs["input"] = fileName;
         }
-        // Create placeholder if no valid file
+        // Check if input is a URL
+        else if (form.TryGetValue("input", out var inputValues) && !string.IsNullOrEmpty(inputValues[0]))
+        {
+            var inputValue = inputValues[0];
+            
+            // Check if input is a URL
+            if (Uri.TryCreate(inputValue, UriKind.Absolute, out var uri) && 
+                (uri.Scheme == "http" || uri.Scheme == "https"))
+            {
+                // Download the file from the URL
+                using var httpClient = new HttpClient();
+                try 
+                {
+                    var response = await httpClient.GetAsync(uri);
+                    response.EnsureSuccessStatusCode();
+                    
+                    var contentType = response.Content.Headers.ContentType?.MediaType;
+                    if (contentType != null && AudioValidation.ValidateMediaType(contentType))
+                    {
+                        var fileExtension = ".wav"; // Default extension
+                        if (contentType.Contains("mp3")) fileExtension = ".mp3";
+                        else if (contentType.Contains("ogg")) fileExtension = ".ogg";
+                        else if (contentType.Contains("webm")) fileExtension = ".webm";
+                        
+                        var fileName = $"{directoryPath}{Guid.NewGuid()}{fileExtension}";
+                        var audioBytes = await response.Content.ReadAsByteArrayAsync();
+                        await File.WriteAllBytesAsync(fileName, audioBytes);
+                        request.Kwargs["input"] = fileName;
+                    }
+                    else
+                    {
+                        throw new InvalidOperationException("URL does not point to a valid audio file");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"Error downloading audio from URL: {ex.Message}");
+                    throw new InvalidOperationException("Failed to download audio from URL", ex);
+                }
+            }
+            // Check if input is Base64
+            else if (inputValue.Length > 100) // Arbitrary minimum length for base64 data
+            {
+                try
+                {
+                    var base64Data = inputValue;
+                    // Remove data URL prefix if present
+                    if (base64Data.StartsWith("data:"))
+                    {
+                        var commaIndex = base64Data.IndexOf(',');
+                        if (commaIndex > 0)
+                        {
+                            base64Data = base64Data.Substring(commaIndex + 1);
+                        }
+                    }
+                    
+                    var audioBytes = Convert.FromBase64String(base64Data);
+                    var fileName = $"{directoryPath}{Guid.NewGuid()}.wav"; // Assume WAV for base64
+                    await File.WriteAllBytesAsync(fileName, audioBytes);
+                    request.Kwargs["input"] = fileName;
+                }
+                catch (FormatException)
+                {
+                    // Not valid base64, treat as text input
+                    var fileName = $"{directoryPath}{Guid.NewGuid()}_empty.wav";
+                    File.WriteAllBytes(fileName, new byte[44]); // Empty WAV header
+                    request.Kwargs["input"] = fileName;
+                }
+            }
+            else
+            {
+                // Create placeholder if no valid input
+                var fileName = $"{directoryPath}{Guid.NewGuid()}_empty.wav";
+                File.WriteAllBytes(fileName, new byte[44]); // Empty WAV header
+                request.Kwargs["input"] = fileName;
+            }
+        }
+        // Create placeholder if no valid input
         else
         {
             var fileName = $"{directoryPath}{Guid.NewGuid()}_empty.wav";

@@ -72,16 +72,16 @@ public class CompletionModel : BaseModel { }
 
 public class SpeechRecognitionModel : BaseModel
 {
-    public bool OutputLanguage { get; set; } = false;
-    public bool ReturnTimestamps { get; set; } = false;
+    public bool OutputLanguage { get; set; }
+    public string ReturnTimestamps { get; set; }
 }
 
 public class TextToSpeechModel : BaseModel
 {
-    public string Voice { get; set; } = "default";
+    public string Voice { get; set; }
 }
 
 public class TranslationModel : BaseModel
 {
-    public List<string> SupportedLanguages { get; set; } = new();
+    public List<string> SupportedLanguages { get; set; }
 }
