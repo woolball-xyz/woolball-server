@@ -108,7 +108,84 @@ public class SpeechToTextTaskHandler : ITaskHandler
             await file.CopyToAsync(stream);
             request.Kwargs["input"] = fileName;
         }
-        // Create placeholder if no valid file
+        // Check if input is a URL
+        else if (form.TryGetValue("input", out var inputValues) && !string.IsNullOrEmpty(inputValues[0]))
+        {
+            var inputValue = inputValues[0];
+            
+            // Check if input is a URL
+            if (Uri.TryCreate(inputValue, UriKind.Absolute, out var uri) && 
+                (uri.Scheme == "http" || uri.Scheme == "https"))
+            {
+                // Download the file from the URL
+                using var httpClient = new HttpClient();
+                try 
+                {
+                    var response = await httpClient.GetAsync(uri);
+                    response.EnsureSuccessStatusCode();
+                    
+                    var contentType = response.Content.Headers.ContentType?.MediaType;
+                    if (contentType != null && AudioValidation.ValidateMediaType(contentType))
+                    {
+                        var fileExtension = ".wav"; // Default extension
+                        if (contentType.Contains("mp3")) fileExtension = ".mp3";
+                        else if (contentType.Contains("ogg")) fileExtension = ".ogg";
+                        else if (contentType.Contains("webm")) fileExtension = ".webm";
+                        
+                        var fileName = $"{directoryPath}{Guid.NewGuid()}{fileExtension}";
+                        var audioBytes = await response.Content.ReadAsByteArrayAsync();
+                        await File.WriteAllBytesAsync(fileName, audioBytes);
+                        request.Kwargs["input"] = fileName;
+                    }
+                    else
+                    {
+                        throw new InvalidOperationException("URL does not point to a valid audio file");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"Error downloading audio from URL: {ex.Message}");
+                    throw new InvalidOperationException("Failed to download audio from URL", ex);
+                }
+            }
+            // Check if input is Base64
+            else if (inputValue.Length > 100) // Arbitrary minimum length for base64 data
+            {
+                try
+                {
+                    var base64Data = inputValue;
+                    // Remove data URL prefix if present
+                    if (base64Data.StartsWith("data:"))
+                    {
+                        var commaIndex = base64Data.IndexOf(',');
+                        if (commaIndex > 0)
+                        {
+                            base64Data = base64Data.Substring(commaIndex + 1);
+                        }
+                    }
+                    
+                    var audioBytes = Convert.FromBase64String(base64Data);
+                    var fileName = $"{directoryPath}{Guid.NewGuid()}.wav"; // Assume WAV for base64
+                    await File.WriteAllBytesAsync(fileName, audioBytes);
+                    request.Kwargs["input"] = fileName;
+                }
+                catch (FormatException)
+                {
+                    // Not valid base64, treat as text input
+                    var fileName = $"{directoryPath}{Guid.NewGuid()}_empty.wav";
+                    File.WriteAllBytes(fileName, new byte[44]); // Empty WAV header
+                    request.Kwargs["input"] = fileName;
+                }
+            }
+            else
+            {
+                // Create placeholder if no valid input
+                var fileName = $"{directoryPath}{Guid.NewGuid()}_empty.wav";
+                File.WriteAllBytes(fileName, new byte[44]); // Empty WAV header
+                request.Kwargs["input"] = fileName;
+            }
+        }
+        // Create placeholder if no valid input
         else
         {
             var fileName = $"{directoryPath}{Guid.NewGuid()}_empty.wav";
@@ -246,7 +323,48 @@ public class TaskRequest
     public Dictionary<string, object> Kwargs { get; set; }
     public Dictionary<string, object> PrivateArgs { get; set; }
 
-    public static async Task<TaskRequest> Create(IFormCollection form, string task)
+    public static async Task<TaskRequest> Create(object requestDto, string task)
+    {
+        if (!AvailableModels.IsValidTask(task))
+        {
+            throw new InvalidOperationException($"Task '{task}' is not supported");
+        }
+
+        string officialTask = GetOfficialTaskType(task);
+
+        var request = new TaskRequest
+        {
+            Task = officialTask,
+            Kwargs = new Dictionary<string, object>(),
+            PrivateArgs = new Dictionary<string, object>()
+        };
+
+        request.Kwargs["type"] = "PROCESS_EVENT";
+        request.Kwargs["task"] = officialTask;
+
+        if (requestDto != null)
+        {
+            foreach (var prop in requestDto.GetType().GetProperties())
+            {
+                var value = prop.GetValue(requestDto);
+                if (value != null)
+                {
+                    var key = char.ToLowerInvariant(prop.Name[0]) + prop.Name.Substring(1);
+                    request.Kwargs[key] = value;
+                }
+            }
+        }
+
+        if (TaskHandlerFactory.HasHandler(officialTask))
+        {
+            var handler = TaskHandlerFactory.GetHandler(officialTask);
+            await handler.ProcessInput(request, null);
+        }
+
+        return request;
+    }
+
+    public static async Task<TaskRequest> CreateFromForm(IFormCollection form, string task)
     {
         // Validate that the task is supported
         if (!AvailableModels.IsValidTask(task))
@@ -267,7 +385,11 @@ public class TaskRequest
 
         foreach (var key in form.Keys)
         {
-            request.Kwargs[key] = form[key][0];
+            var value = form[key][0];
+            if (!string.IsNullOrEmpty(value))
+            {
+                request.Kwargs[key] = value;
+            }
         }
 
         // Use the official task type for handler lookup

@@ -28,8 +28,6 @@ public sealed class TranslationLogic : ITranslationLogic
                         new TranslationResponse
                         {
                             TranslatedText = "",
-                            SourceLanguage = "",
-                            TargetLanguage = "",
                         }
                     )
                 );
@@ -61,8 +59,6 @@ public sealed class TranslationLogic : ITranslationLogic
                         ?? new TranslationResponse
                         {
                             TranslatedText = "",
-                            SourceLanguage = "",
-                            TargetLanguage = "",
                         };
                 }
             }
@@ -74,8 +70,6 @@ public sealed class TranslationLogic : ITranslationLogic
                 translationResponse = new TranslationResponse
                 {
                     TranslatedText = "",
-                    SourceLanguage = "",
-                    TargetLanguage = "",
                 };
             }
 
@@ -96,8 +90,6 @@ public sealed class TranslationLogic : ITranslationLogic
                         new TranslationResponse
                         {
                             TranslatedText = "",
-                            SourceLanguage = "",
-                            TargetLanguage = "",
                         }
                     )
                 );
