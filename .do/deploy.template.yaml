@@ -69,6 +69,7 @@ spec:
   databases:
   - name: redis
     engine: VALKEY
-    version: "7"
+    version: "8"
     size: basic
     num_nodes: 1
+    production: false
