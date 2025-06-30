@@ -50,7 +50,7 @@ services:
 
 static_sites:
 - name: woolball-client
-  source_dir: /browser-ui
+  source_dir: browser-ui
   github:
     repo: woolball-xyz/woolball-client
     branch: main
