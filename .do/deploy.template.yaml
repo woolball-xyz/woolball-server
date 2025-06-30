@@ -65,11 +65,3 @@ spec:
       value: ${APP_URL}/ws
     - key: NEXT_PUBLIC_API_URL
       value: ${APP_URL}/api/v1
-
-  databases:
-  - name: redis
-    engine: VALKEY
-    version: "8"
-    size: basic
-    num_nodes: 1
-    production: false
