@@ -1,72 +1,73 @@
-name: woolball-app
-services:
-- name: core-api
-  source_dir: /
-  github:
-    repo: woolball-xyz/browser-network-server
-    branch: main
-  dockerfile_path: src/WebApi/dockerfile.aspnet
-  http_port: 8080
-  instance_count: 1
-  instance_size_slug: basic-xxs
-  routes:
-  - path: /api
-  envs:
-  - key: RedisConnection
-    scope: RUN_TIME
-    type: SECRET
-    value: ${redis.PRIVATE_URL}
+spec:
+  name: woolball-server
+  services:
+  - name: core-api
+    source_dir: /
+    git:
+      repo_clone_url: https://github.com/woolball-xyz/browser-network-server.git
+      branch: main
+    dockerfile_path: src/WebApi/dockerfile.aspnet
+    http_port: 8080
+    instance_count: 1
+    instance_size_slug: basic-xxs
+    routes:
+    - path: /api
+    envs:
+    - key: RedisConnection
+      scope: RUN_TIME
+      type: SECRET
+      value: ${redis.PRIVATE_URL}
 
-- name: core-websocket
-  source_dir: /
-  github:
-    repo: woolball-xyz/browser-network-server
-    branch: main
-  dockerfile_path: src/WebSocket/dockerfile.aspnet
-  http_port: 8080
-  instance_count: 1
-  instance_size_slug: basic-xxs
-  routes:
-  - path: /ws
-  envs:
-  - key: RedisConnection
-    scope: RUN_TIME
-    type: SECRET
-    value: ${redis.PRIVATE_URL}
+  - name: core-websocket
+    source_dir: /
+    git:
+      repo_clone_url: https://github.com/woolball-xyz/browser-network-server.git
+      branch: main
+    dockerfile_path: src/WebSocket/dockerfile.aspnet
+    http_port: 8080
+    instance_count: 1
+    instance_size_slug: basic-xxs
+    routes:
+    - path: /ws
+    envs:
+    - key: RedisConnection
+      scope: RUN_TIME
+      type: SECRET
+      value: ${redis.PRIVATE_URL}
 
-- name: core-background
-  source_dir: /
-  github:
-    repo: woolball-xyz/browser-network-server
-    branch: main
-  dockerfile_path: src/Background/dockerfile.aspnet
-  instance_count: 1
-  instance_size_slug: basic-xxs
-  envs:
-  - key: RedisConnection
-    scope: RUN_TIME
-    type: SECRET
-    value: ${redis.PRIVATE_URL}
+  - name: core-background
+    source_dir: /
+    git:
+      repo_clone_url: https://github.com/woolball-xyz/browser-network-server.git
+      branch: main
+    dockerfile_path: src/Background/dockerfile.aspnet
+    instance_count: 1
+    instance_size_slug: basic-xxs
+    envs:
+    - key: RedisConnection
+      scope: RUN_TIME
+      type: SECRET
+      value: ${redis.PRIVATE_URL}
 
-static_sites:
-- name: woolball-client
-  source_dir: browser-ui
-  github:
-    repo: woolball-xyz/woolball-client
-    branch: main
-  build_command: npm run build
-  output_dir: .next
-  routes:
-  - path: /
-  envs:
-  - key: NEXT_PUBLIC_WEBSOCKET_URL
-    value: ${APP_URL}/ws
-  - key: NEXT_PUBLIC_API_URL
-    value: ${APP_URL}/api/v1
+  static_sites:
+  - name: woolball-client
+    source_dir: browser-ui
+    git:
+      repo_clone_url: https://github.com/woolball-xyz/woolball-client.git
+      branch: main
+    build_command: npm run build
+    output_dir: .next
+    routes:
+    - path: /
+    envs:
+    - key: NEXT_PUBLIC_WEBSOCKET_URL
+      value: ${APP_URL}/ws
+    - key: NEXT_PUBLIC_API_URL
+      value: ${APP_URL}/api/v1
 
-databases:
-- name: redis
-  engine: REDIS
-  version: "7"
-  size: basic
-  num_nodes: 1
+  databases:
+  - name: redis
+    engine: REDIS
+    version: "7"
+    size: basic
+    num_nodes: 1
