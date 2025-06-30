@@ -35,6 +35,7 @@ spec:
       type: SECRET
       value: ${redis.PRIVATE_URL}
 
+  workers:
   - name: core-background
     source_dir: /
     git:
