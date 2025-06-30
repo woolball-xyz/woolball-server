@@ -8,6 +8,8 @@
 [![Docker](https://img.shields.io/badge/docker-%230db7ed.svg?style=flat&logo=docker&logoColor=white)](https://github.com/orgs/woolball-xyz/packages)
 [![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=woolball-xyz_browser-network-server&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=woolball-xyz_browser-network-server)
 
+[![Deploy to DO](https://www.deploytodo.com/do-btn-blue.svg)](https://cloud.digitalocean.com/apps/new?repo=https://github.com/woolball-xyz/browser-network-server/tree/main)
+
 **Transform idle browsers into a powerful distributed AI inference network**
 
 *Your own browser-based inference infrastructure by turning idle browsers into compute nodes*
@@ -107,6 +109,27 @@ curl -X POST http://localhost:9002/api/v1/text-generation \
   -F "provider=mediapipe" \
   -F "maxTokens=200"
 ```
+
+---
+
+## ☁️ One-Click Deploy to DigitalOcean
+
+Deploy Woolball to DigitalOcean App Platform with a single click:
+
+[![Deploy to DO](https://www.deploytodo.com/do-btn-blue.svg)](https://cloud.digitalocean.com/apps/new?repo=https://github.com/woolball-xyz/browser-network-server/tree/main)
+
+### 🔧 What gets deployed:
+
+- **🌐 Woolball Client**: Frontend interface accessible via your app URL
+- **🔌 Core API**: RESTful API for AI inference jobs (`/api` route)
+- **🔗 WebSocket Server**: Real-time communication with browser nodes (`/ws` route)
+- **⚙️ Background Service**: Job orchestration and node management
+- **📊 Redis Database**: Managed Redis instance for caching and queues
+
+### 🚀 After Deployment:
+1. Your app will be available at `https://your-app-name.ondigitalocean.app`
+2. API endpoint: `https://your-app-name.ondigitalocean.app/api/v1`
+3. WebSocket: `wss://your-app-name.ondigitalocean.app/ws`
 
 ---
 
