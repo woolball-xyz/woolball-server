@@ -16,7 +16,7 @@ spec:
     - key: RedisConnection
       scope: RUN_TIME
       type: SECRET
-      value: ${redis.PRIVATE_URL}
+      value: ${REDIS_CONNECTION_STRING}
 
   - name: core-websocket
     source_dir: /
@@ -33,7 +33,7 @@ spec:
     - key: RedisConnection
       scope: RUN_TIME
       type: SECRET
-      value: ${redis.PRIVATE_URL}
+      value: ${REDIS_CONNECTION_STRING}
 
   workers:
   - name: core-background
@@ -48,7 +48,7 @@ spec:
     - key: RedisConnection
       scope: RUN_TIME
       type: SECRET
-      value: ${redis.PRIVATE_URL}
+      value: ${REDIS_CONNECTION_STRING}
 
   static_sites:
   - name: woolball-client
