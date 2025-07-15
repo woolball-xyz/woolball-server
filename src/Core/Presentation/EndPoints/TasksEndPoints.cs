@@ -74,7 +74,7 @@ public static class TasksEndPoints
         group.MapPost("text-generation", HandleTextGenerationFromForm)
             .WithName("TextGeneration")
             .WithSummary("Generate text with multiple AI providers")
-            .WithDescription("Generate text using Transformers.js, WebLLM, or MediaPipe providers. The provider is automatically detected based on the parameters sent.")
+            .WithDescription("Generate text using Transformers.js, WebLLM, or MediaPipe providers. Specify the provider field to choose which AI provider to use.")
             .Accepts<TextGenerationRequestContract>("multipart/form-data")
             .Produces<TextGenerationResponse>(200)
             .Produces<object>(400)
@@ -82,7 +82,7 @@ public static class TasksEndPoints
             .WithOpenApi(operation => new OpenApiOperation(operation)
             {
                 Summary = "Text Generation - Multi-Provider",
-                Description = "Generate text using multiple AI providers (Transformers.js, WebLLM, MediaPipe). The appropriate provider is automatically selected based on the parameters provided.",
+                Description = "Generate text using multiple AI providers (Transformers.js, WebLLM, MediaPipe). Use the 'provider' field to specify which AI provider to use for text generation.",
                 Tags = new List<OpenApiTag> { new() { Name = "Text Generation" } }
             });
 
