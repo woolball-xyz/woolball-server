@@ -1,13 +1,7 @@
-using System.Globalization;
-using System.Text;
 using System.Threading.RateLimiting;
 using Application;
 using Infrastructure;
-using Microsoft.AspNetCore.Authentication.JwtBearer;
-using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.RateLimiting;
-using Microsoft.EntityFrameworkCore;
-using Microsoft.IdentityModel.Tokens;
 using Presentation;
 using WebApi;
 using WebApi.Filters;
@@ -73,7 +67,6 @@ For detailed examples and model lists, visit our [GitHub repository](https://git
     c.SchemaFilter<SwaggerExamplesFilter>();
     
     // Add custom document filters for oneOf schemas
-    c.DocumentFilter<TextGenerationSchemaFilter>();
     c.DocumentFilter<SpeechToTextSchemaFilter>();
     
     // Group endpoints by tags based on action display name
@@ -94,18 +87,21 @@ For detailed examples and model lists, visit our [GitHub repository](https://git
     });
 });
 
-builder.Services.AddRateLimiter(_ =>
-    _.AddFixedWindowLimiter(
-        policyName: "fixed",
-        options =>
-        {
-            options.PermitLimit = 100;
-            options.Window = TimeSpan.FromMinutes(1);
-            options.QueueProcessingOrder = QueueProcessingOrder.OldestFirst;
-            options.QueueLimit = 0;
-        }
-    )
-);
+builder.Services.AddRateLimiter(options =>
+{
+    options.AddPolicy("fixed", context =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            partitionKey: context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+            factory: _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 100,
+                Window = TimeSpan.FromMinutes(1),
+                QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+                QueueLimit = 25,
+            }
+        )
+    );
+});
 
 builder.Services
 .AddRedis(builder.Configuration)  // Temporarily disabled for testing

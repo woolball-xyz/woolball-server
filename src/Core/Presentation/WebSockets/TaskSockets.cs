@@ -53,28 +53,22 @@ public static class TaskSockets
         var buffer = new byte[1024 * 4];
         WebSocketReceiveResult result;
 
-        // Simplified ping mechanism
-        _ = Task.Run(async () =>
+        using var pingCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        var pingTask = Task.Run(async () =>
         {
-            while (webSocket.State == WebSocketState.Open)
+            using var timer = new PeriodicTimer(TimeSpan.FromSeconds(30));
+            try
             {
-                try
+                while (await timer.WaitForNextTickAsync(pingCts.Token))
                 {
-                    var pingMessage = new ArraySegment<byte>(Encoding.UTF8.GetBytes("ping"));
+                    if (webSocket.State != WebSocketState.Open) break;
                     await webSocket.SendAsync(
-                        pingMessage,
-                        WebSocketMessageType.Text,
-                        true,
-                        CancellationToken.None
-                    );
-                    await Task.Delay(TimeSpan.FromSeconds(30));
-                }
-                catch
-                {
-                    // Ignore
+                        new ArraySegment<byte>(Encoding.UTF8.GetBytes("ping")),
+                        WebSocketMessageType.Text, true, pingCts.Token);
                 }
             }
-        });
+            catch (OperationCanceledException) { }
+        }, pingCts.Token);
 
         try
         {
@@ -163,6 +157,8 @@ public static class TaskSockets
         }
         finally
         {
+            pingCts.Cancel();
+            try { await pingTask; } catch (OperationCanceledException) { }
             await webSocketNodesQueue.RemoveConnectionAsync(connectionId);
         }
     }

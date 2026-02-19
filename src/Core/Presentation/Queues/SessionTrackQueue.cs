@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using System.Text.Json;
 using Domain.Contracts;
+using Domain.Utilities;
 using Infrastructure.Redis;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -10,7 +11,8 @@ namespace Presentation.Queues;
 
 public sealed class SessionTrackQueue(
     IServiceScopeFactory serviceScopeFactory,
-    IRedisStreamPublisher publisher
+    IRedisStreamPublisher publisher,
+    IConnectionMultiplexer redis
 ) : BackgroundService
 {
     private readonly ConcurrentDictionary<Guid, CancellationTokenSource> _taskTimers = new();
@@ -24,8 +26,6 @@ public sealed class SessionTrackQueue(
         {
             try
             {
-                using var scope = serviceScopeFactory.CreateScope();
-                var redis = scope.ServiceProvider.GetRequiredService<IConnectionMultiplexer>();
                 var db = redis.GetDatabase();
 
                 var sessionConsumer = new RedisStreamConsumer(redis, StreamNames.SessionTracking);
@@ -130,35 +130,7 @@ public sealed class SessionTrackQueue(
                 if (taskRequest == null)
                     return;
 
-                int retryCount = 0;
-                if (taskRequest.PrivateArgs.TryGetValue("retry_count", out var retryValue))
-                {
-                    if (retryValue is int intValue)
-                    {
-                        retryCount = intValue;
-                    }
-                    else if (retryValue is JsonElement jsonElement)
-                    {
-                        if (jsonElement.ValueKind == JsonValueKind.Number)
-                        {
-                            retryCount = jsonElement.GetInt32();
-                        }
-                        else if (
-                            jsonElement.ValueKind == JsonValueKind.String
-                            && int.TryParse(jsonElement.GetString(), out var parsedValue)
-                        )
-                        {
-                            retryCount = parsedValue;
-                        }
-                    }
-                    else if (retryValue != null)
-                    {
-                        if (int.TryParse(retryValue.ToString(), out var parsedValue))
-                        {
-                            retryCount = parsedValue;
-                        }
-                    }
-                }
+                int retryCount = PrivateArgsHelper.GetInt(taskRequest.PrivateArgs, "retry_count");
 
                 if (retryCount < MAX_RETRY_ATTEMPTS)
                 {
@@ -180,8 +152,6 @@ public sealed class SessionTrackQueue(
 
                     await db.KeyDeleteAsync($"task:{taskId}");
 
-                    using var scope = serviceScopeFactory.CreateScope();
-                    var redis = scope.ServiceProvider.GetRequiredService<IConnectionMultiplexer>();
                     var subscriber = redis.GetSubscriber();
 
                     var failureMessage = JsonSerializer.Serialize(

@@ -105,26 +105,17 @@ public static class SpeechToTextFormProcessor
                 }
                 catch (FormatException)
                 {
-                    // Not valid base64, treat as text input
-                    var fileName = Path.Combine(directoryPath, $"{Guid.NewGuid()}_empty.wav");
-                    File.WriteAllBytes(fileName, new byte[44]); // Empty WAV header
-                    request.Kwargs["input"] = fileName;
+                    throw new InvalidOperationException("Invalid base64 audio data");
                 }
             }
             else
             {
-                // Create placeholder if no valid input
-                var fileName = Path.Combine(directoryPath, $"{Guid.NewGuid()}_empty.wav");
-                File.WriteAllBytes(fileName, new byte[44]); // Empty WAV header
-                request.Kwargs["input"] = fileName;
+                throw new InvalidOperationException("Input is not a valid audio file, URL, or base64 data");
             }
         }
-        // Create placeholder if no valid input
         else
         {
-            var fileName = Path.Combine(directoryPath, $"{Guid.NewGuid()}_empty.wav");
-            File.WriteAllBytes(fileName, new byte[44]); // Empty WAV header
-            request.Kwargs["input"] = fileName;
+            throw new InvalidOperationException("No audio input provided");
         }
     }
 }

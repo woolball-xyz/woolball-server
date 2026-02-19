@@ -75,7 +75,6 @@ public static class TasksEndPoints
             .WithName("TextGeneration")
             .WithSummary("Generate text with multiple AI providers")
             .WithDescription("Generate text using Transformers.js, WebLLM, or MediaPipe providers. Specify the provider field to choose which AI provider to use.")
-            .Accepts<TextGenerationRequestContract>("multipart/form-data")
             .Produces<TextGenerationResponse>(200)
             .Produces<object>(400)
             .RequireRateLimiting("fixed")

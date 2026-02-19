@@ -26,9 +26,6 @@ public class SwaggerExamplesFilter : ISchemaFilter
             case "TranslationRequestContract":
                 AddTranslationExample(schema);
                 break;
-            case "TextGenerationRequestContract":
-                AddTextGenerationExamples(schema);
-                break;
             case "TaskResponse":
                 AddTaskResponseExample(schema);
                 break;
@@ -67,45 +64,6 @@ public class SwaggerExamplesFilter : ISchemaFilter
             ["src_lang"] = new OpenApiString("eng_Latn"),
             ["tgt_lang"] = new OpenApiString("fra_Latn")
         };
-    }
-
-    private static void AddTextGenerationExamples(OpenApiSchema schema)
-    {
-        // Add examples for each provider variant
-        var examples = new OpenApiObject
-        {
-            ["transformers"] = new OpenApiObject
-            {
-                ["provider"] = new OpenApiString("transformers"),
-                ["model"] = new OpenApiString("Xenova/gpt2"),
-                ["input"] = new OpenApiString("The future of artificial intelligence is"),
-                ["max_new_tokens"] = new OpenApiInteger(50),
-                ["temperature"] = new OpenApiDouble(0.7),
-                ["do_sample"] = new OpenApiBoolean(true),
-                ["top_p"] = new OpenApiDouble(0.9)
-            },
-            ["webllm"] = new OpenApiObject
-            {
-                ["provider"] = new OpenApiString("webllm"),
-                ["model"] = new OpenApiString("Llama-2-7b-chat-hf-q4f16_1"),
-                ["input"] = new OpenApiString("Explain quantum computing in simple terms:"),
-                ["temperature"] = new OpenApiDouble(0.8),
-                ["top_p"] = new OpenApiDouble(0.95),
-                ["frequency_penalty"] = new OpenApiDouble(0.1),
-                ["presence_penalty"] = new OpenApiDouble(0.1)
-            },
-            ["mediapipe"] = new OpenApiObject
-            {
-                ["provider"] = new OpenApiString("mediapipe"),
-                ["model"] = new OpenApiString("gemma-2b-it-gpu-int4"),
-                ["input"] = new OpenApiString("Write a short story about a robot:"),
-                ["max_tokens"] = new OpenApiInteger(100),
-                ["temperature"] = new OpenApiDouble(0.9),
-                ["random_seed"] = new OpenApiInteger(42)
-            }
-        };
-
-        schema.Example = examples["transformers"]; // Default example
     }
 
     private static void AddTaskResponseExample(OpenApiSchema schema)

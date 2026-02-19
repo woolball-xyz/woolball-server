@@ -14,16 +14,19 @@ public sealed class DistributeQueue : BackgroundService
     private readonly IServiceScopeFactory _serviceScopeFactory;
     private readonly WebSocketNodesQueue _webSocketNodesQueue;
     private readonly IRedisStreamPublisher _publisher;
+    private readonly IConnectionMultiplexer _redis;
 
     public DistributeQueue(
         IServiceScopeFactory serviceScopeFactory,
         WebSocketNodesQueue webSocketNodesQueue,
-        IRedisStreamPublisher publisher
+        IRedisStreamPublisher publisher,
+        IConnectionMultiplexer redis
     )
     {
         _serviceScopeFactory = serviceScopeFactory;
         _webSocketNodesQueue = webSocketNodesQueue;
         _publisher = publisher;
+        _redis = redis;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -32,9 +35,7 @@ public sealed class DistributeQueue : BackgroundService
         {
             try
             {
-                using var scope = _serviceScopeFactory.CreateScope();
-                var redis = scope.ServiceProvider.GetRequiredService<IConnectionMultiplexer>();
-                var consumer = new RedisStreamConsumer(redis, StreamNames.Distribute);
+                var consumer = new RedisStreamConsumer(_redis, StreamNames.Distribute);
                 await consumer.ConsumeAsync(msg => ProcessMessageAsync(msg, stoppingToken), stoppingToken);
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { }
@@ -56,8 +57,19 @@ public sealed class DistributeQueue : BackgroundService
             var taskRequest = JsonSerializer.Deserialize<TaskRequest>(message);
             if (taskRequest != null)
             {
-                var (id, webSocket) =
-                    await _webSocketNodesQueue.GetAvailableWebsocketAsync();
+                using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
+                timeoutCts.CancelAfter(TimeSpan.FromSeconds(30));
+
+                string id;
+                System.Net.WebSockets.WebSocket webSocket;
+                try
+                {
+                    (id, webSocket) = await _webSocketNodesQueue.GetAvailableWebsocketAsync(timeoutCts.Token);
+                }
+                catch (OperationCanceledException) when (!stoppingToken.IsCancellationRequested)
+                {
+                    throw new Exception("No available nodes (timeout after 30s)");
+                }
 
                 if (id == null)
                 {
@@ -66,9 +78,7 @@ public sealed class DistributeQueue : BackgroundService
 
                 taskRequest.PrivateArgs["node_id"] = id.ToString();
 
-                using var scope = _serviceScopeFactory.CreateScope();
-                var redis = scope.ServiceProvider.GetRequiredService<IConnectionMultiplexer>();
-                var db = redis.GetDatabase();
+                var db = _redis.GetDatabase();
 
                 await db.StringSetAsync($"task:{taskRequest.Id}", message, TimeSpan.FromMinutes(10));
 
@@ -92,7 +102,11 @@ public sealed class DistributeQueue : BackgroundService
                     stoppingToken
                 );
 
-                await _publisher.PublishAsync(StreamNames.SessionTracking, taskRequest.Id.ToString());
+                // Publish the parent ID for session tracking if this is a sub-task
+                var trackingId = taskRequest.PrivateArgs.ContainsKey("parent")
+                    ? taskRequest.PrivateArgs["parent"].ToString()
+                    : taskRequest.Id.ToString();
+                await _publisher.PublishAsync(StreamNames.SessionTracking, trackingId);
             }
         }
         catch (Exception ex)

@@ -1,6 +1,5 @@
 ﻿using Application.Logic;
 using Domain.Contracts;
-using FluentValidation;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Application;

@@ -26,6 +26,11 @@ services:
     - redis
    networks:
     - app-network
+   deploy:
+    resources:
+      limits:
+        memory: 512M
+        cpus: '1.0'
 
   core-websocket:
    image: ghcr.io/woolball-xyz/server-websocket:latest
@@ -44,6 +49,11 @@ services:
     - redis
    networks:
     - app-network
+   deploy:
+    resources:
+      limits:
+        memory: 512M
+        cpus: '1.0'
 
   core-background:
    image: ghcr.io/woolball-xyz/server-background:latest
@@ -60,6 +70,11 @@ services:
     - redis
    networks:
     - app-network
+   deploy:
+    resources:
+      limits:
+        memory: 1G
+        cpus: '2.0'
 
   redis:
    image: redis:alpine
@@ -70,6 +85,11 @@ services:
     - redis-data:/data
    networks:
     - app-network
+   deploy:
+    resources:
+      limits:
+        memory: 256M
+        cpus: '0.5'
 
 networks:
   app-network:

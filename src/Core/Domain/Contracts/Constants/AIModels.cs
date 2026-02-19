@@ -1,11 +1,5 @@
 namespace Contracts.Constants;
 
-public class BaseModel
-{
-    public required string Model { get; set; }
-    public required string Dtype { get; set; }
-}
-
 public static class AvailableModels
 {
     public static readonly string TextGeneration = "text-generation";
@@ -66,22 +60,4 @@ public static class AvailableModels
 
         return false;
     }
-}
-
-public class CompletionModel : BaseModel { }
-
-public class SpeechRecognitionModel : BaseModel
-{
-    public bool OutputLanguage { get; set; }
-    public string ReturnTimestamps { get; set; }
-}
-
-public class TextToSpeechModel : BaseModel
-{
-    public string Voice { get; set; }
-}
-
-public class TranslationModel : BaseModel
-{
-    public List<string> SupportedLanguages { get; set; }
 }

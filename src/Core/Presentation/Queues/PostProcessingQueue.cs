@@ -3,6 +3,7 @@ using System.Text.Json.Nodes;
 using Application.Logic;
 using Contracts.Constants;
 using Domain.Contracts;
+using Domain.Utilities;
 using Infrastructure.Redis;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -12,7 +13,8 @@ namespace Presentation.Queues;
 
 public sealed class PostProcessingQueue(
     IServiceScopeFactory serviceScopeFactory,
-    IRedisStreamPublisher publisher
+    IRedisStreamPublisher publisher,
+    IConnectionMultiplexer redis
 ) : BackgroundService
 {
     private const int MaxRetryAttempts = 3;
@@ -23,15 +25,13 @@ public sealed class PostProcessingQueue(
         {
             try
             {
-                using var scope = serviceScopeFactory.CreateScope();
-                var redis = scope.ServiceProvider.GetRequiredService<IConnectionMultiplexer>();
                 var consumer = new RedisStreamConsumer(redis, StreamNames.PostProcessing);
                 await consumer.ConsumeAsync(ProcessMessageAsync, stoppingToken);
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { }
             catch (Exception e)
             {
-                Console.WriteLine($"Error in post processing queue: {e.Message}");
+                Console.WriteLine($"Error in post-processing queue: {e.Message}");
                 await Task.Delay(5000, stoppingToken);
             }
         }
@@ -60,8 +60,6 @@ public sealed class PostProcessingQueue(
                 return;
             }
 
-            using var scope = serviceScopeFactory.CreateScope();
-            var redis = scope.ServiceProvider.GetRequiredService<IConnectionMultiplexer>();
             var db = redis.GetDatabase();
 
             var request = await db.StringGetAsync(
@@ -97,10 +95,13 @@ public sealed class PostProcessingQueue(
             {
                 await ProcessTaskResponseAsync(taskResponse, taskRequest);
 
+                var completionId = taskRequest.PrivateArgs.ContainsKey("parent")
+                    ? Guid.Parse(taskRequest.PrivateArgs["parent"].ToString()!)
+                    : taskRequest.Id;
                 var completionData = JsonSerializer.Serialize(
                     new TaskCompletionData
                     {
-                        TaskRequestId = taskRequest.Id,
+                        TaskRequestId = completionId,
                         Status = "completed"
                     }
                 );
@@ -113,43 +114,7 @@ public sealed class PostProcessingQueue(
                     $"[PostProcessingQueue] Error processing task {taskRequest.Id}: {ex.Message}"
                 );
 
-                int retryCount = 0;
-                if (
-                    taskRequest.PrivateArgs.TryGetValue(
-                        "retry_count",
-                        out var retryValue
-                    )
-                )
-                {
-                    if (retryValue is int intValue)
-                    {
-                        retryCount = intValue;
-                    }
-                    else if (retryValue is JsonElement jsonElement)
-                    {
-                        if (jsonElement.ValueKind == JsonValueKind.Number)
-                        {
-                            retryCount = jsonElement.GetInt32();
-                        }
-                        else if (
-                            jsonElement.ValueKind == JsonValueKind.String
-                            && int.TryParse(
-                                jsonElement.GetString(),
-                                out var parsedValue
-                            )
-                        )
-                        {
-                            retryCount = parsedValue;
-                        }
-                    }
-                    else if (retryValue != null)
-                    {
-                        if (int.TryParse(retryValue.ToString(), out var parsedValue))
-                        {
-                            retryCount = parsedValue;
-                        }
-                    }
-                }
+                int retryCount = PrivateArgsHelper.GetInt(taskRequest.PrivateArgs, "retry_count");
 
                 if (retryCount < MaxRetryAttempts)
                 {
@@ -184,7 +149,7 @@ public sealed class PostProcessingQueue(
         }
         catch (Exception e)
         {
-            Console.WriteLine($"Error in postprocessing queue: {e.Message}");
+            Console.WriteLine($"Error in post-processing queue: {e.Message}");
             if (taskId != null)
             {
                 using var errorScope = serviceScopeFactory.CreateScope();

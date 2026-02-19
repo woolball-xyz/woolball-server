@@ -8,7 +8,10 @@ using StackExchange.Redis;
 
 namespace Presentation.Queues;
 
-public sealed class PreProcessingQueue(IServiceScopeFactory serviceScopeFactory) : BackgroundService
+public sealed class PreProcessingQueue(
+    IServiceScopeFactory serviceScopeFactory,
+    IConnectionMultiplexer redis
+) : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -16,8 +19,6 @@ public sealed class PreProcessingQueue(IServiceScopeFactory serviceScopeFactory)
         {
             try
             {
-                using var scope = serviceScopeFactory.CreateScope();
-                var redis = scope.ServiceProvider.GetRequiredService<IConnectionMultiplexer>();
                 var consumer = new RedisStreamConsumer(redis, StreamNames.PreProcessing);
                 await consumer.ConsumeAsync(ProcessMessageAsync, stoppingToken);
             }
