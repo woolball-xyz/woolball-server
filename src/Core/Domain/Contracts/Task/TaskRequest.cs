@@ -103,7 +103,9 @@ public class SpeechToTextTaskHandler : ITaskHandler
         // Process file if it exists
         if (file != null && file.Length > 0)
         {
-            var fileName = $"{directoryPath}{Guid.NewGuid()}_{file.FileName}";
+            InputSanitizer.ValidateFileSize(file.Length);
+            var safeFileName = InputSanitizer.SanitizeFileName(file.FileName);
+            var fileName = Path.Combine(directoryPath, $"{Guid.NewGuid()}_{safeFileName}");
             using var stream = new FileStream(fileName, FileMode.Create);
             await file.CopyToAsync(stream);
             request.Kwargs["input"] = fileName;
@@ -114,16 +116,19 @@ public class SpeechToTextTaskHandler : ITaskHandler
             var inputValue = inputValues[0];
             
             // Check if input is a URL
-            if (Uri.TryCreate(inputValue, UriKind.Absolute, out var uri) && 
+            if (Uri.TryCreate(inputValue, UriKind.Absolute, out var uri) &&
                 (uri.Scheme == "http" || uri.Scheme == "https"))
             {
+                // Validate URL does not point to internal networks
+                await InputSanitizer.ValidateUrlAsync(uri);
+
                 // Download the file from the URL
-                using var httpClient = new HttpClient();
-                try 
+                using var httpClient = InputSanitizer.CreateSafeHttpClient();
+                try
                 {
                     var response = await httpClient.GetAsync(uri);
                     response.EnsureSuccessStatusCode();
-                    
+
                     var contentType = response.Content.Headers.ContentType?.MediaType;
                     if (contentType != null && AudioValidation.ValidateMediaType(contentType))
                     {
@@ -131,9 +136,10 @@ public class SpeechToTextTaskHandler : ITaskHandler
                         if (contentType.Contains("mp3")) fileExtension = ".mp3";
                         else if (contentType.Contains("ogg")) fileExtension = ".ogg";
                         else if (contentType.Contains("webm")) fileExtension = ".webm";
-                        
-                        var fileName = $"{directoryPath}{Guid.NewGuid()}{fileExtension}";
+
                         var audioBytes = await response.Content.ReadAsByteArrayAsync();
+                        InputSanitizer.ValidateFileSize(audioBytes.Length);
+                        var fileName = Path.Combine(directoryPath, $"{Guid.NewGuid()}{fileExtension}");
                         await File.WriteAllBytesAsync(fileName, audioBytes);
                         request.Kwargs["input"] = fileName;
                     }
@@ -142,7 +148,7 @@ public class SpeechToTextTaskHandler : ITaskHandler
                         throw new InvalidOperationException("URL does not point to a valid audio file");
                     }
                 }
-                catch (Exception ex)
+                catch (HttpRequestException ex)
                 {
                     Console.WriteLine($"Error downloading audio from URL: {ex.Message}");
                     throw new InvalidOperationException("Failed to download audio from URL", ex);
@@ -163,16 +169,17 @@ public class SpeechToTextTaskHandler : ITaskHandler
                             base64Data = base64Data.Substring(commaIndex + 1);
                         }
                     }
-                    
+
                     var audioBytes = Convert.FromBase64String(base64Data);
-                    var fileName = $"{directoryPath}{Guid.NewGuid()}.wav"; // Assume WAV for base64
+                    InputSanitizer.ValidateFileSize(audioBytes.Length);
+                    var fileName = Path.Combine(directoryPath, $"{Guid.NewGuid()}.wav");
                     await File.WriteAllBytesAsync(fileName, audioBytes);
                     request.Kwargs["input"] = fileName;
                 }
                 catch (FormatException)
                 {
                     // Not valid base64, treat as text input
-                    var fileName = $"{directoryPath}{Guid.NewGuid()}_empty.wav";
+                    var fileName = Path.Combine(directoryPath, $"{Guid.NewGuid()}_empty.wav");
                     File.WriteAllBytes(fileName, new byte[44]); // Empty WAV header
                     request.Kwargs["input"] = fileName;
                 }
@@ -180,7 +187,7 @@ public class SpeechToTextTaskHandler : ITaskHandler
             else
             {
                 // Create placeholder if no valid input
-                var fileName = $"{directoryPath}{Guid.NewGuid()}_empty.wav";
+                var fileName = Path.Combine(directoryPath, $"{Guid.NewGuid()}_empty.wav");
                 File.WriteAllBytes(fileName, new byte[44]); // Empty WAV header
                 request.Kwargs["input"] = fileName;
             }
@@ -188,7 +195,7 @@ public class SpeechToTextTaskHandler : ITaskHandler
         // Create placeholder if no valid input
         else
         {
-            var fileName = $"{directoryPath}{Guid.NewGuid()}_empty.wav";
+            var fileName = Path.Combine(directoryPath, $"{Guid.NewGuid()}_empty.wav");
             File.WriteAllBytes(fileName, new byte[44]); // Empty WAV header
             request.Kwargs["input"] = fileName;
         }
