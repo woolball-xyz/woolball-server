@@ -121,19 +121,7 @@ public static class TasksEndPoints
         CancellationToken cancellationToken
     )
     {
-        try
-        {
-            await HandleTaskInternalFromForm("text-generation", context, logic, cancellationToken);
-        }
-        catch (Exception e)
-        {
-            Console.WriteLine($"Request error: {e.GetType().Name}");
-            context.Response.StatusCode = 500;
-            await context.Response.WriteAsync(
-                JsonSerializer.Serialize(new { error = "internal error" }),
-                cancellationToken
-            );
-        }
+        await HandleTaskInternalFromForm("text-generation", context, logic, cancellationToken);
     }
     
 
@@ -150,10 +138,29 @@ public static class TasksEndPoints
             var request = await TaskRequestFactory.CreateFromForm(context.Request.Form, task);
             await ProcessTaskRequest(request, context, logic, cancellationToken);
         }
+        catch (InvalidOperationException e)
+        {
+            context.Response.StatusCode = 400;
+            context.Response.ContentType = "application/json";
+            await context.Response.WriteAsync(
+                JsonSerializer.Serialize(new { error = e.Message }),
+                cancellationToken
+            );
+        }
+        catch (TimeoutException)
+        {
+            context.Response.StatusCode = 504;
+            context.Response.ContentType = "application/json";
+            await context.Response.WriteAsync(
+                JsonSerializer.Serialize(new { error = "Task processing timed out" }),
+                CancellationToken.None
+            );
+        }
         catch (Exception e)
         {
             Console.WriteLine($"Request error: {e.GetType().Name}");
             context.Response.StatusCode = 500;
+            context.Response.ContentType = "application/json";
             await context.Response.WriteAsync(
                 JsonSerializer.Serialize(new { error = "internal error" }),
                 cancellationToken
@@ -209,7 +216,9 @@ public static class TasksEndPoints
 
         if (isStreaming)
         {
-            context.Response.ContentType = "text/plain";
+            context.Response.ContentType = "application/x-ndjson";
+            context.Response.Headers["Cache-Control"] = "no-cache";
+            context.Response.Headers["Transfer-Encoding"] = "chunked";
 
             await foreach (
                 var message in logic.StreamTaskResultAsync(request, cancellationToken)
@@ -224,7 +233,7 @@ public static class TasksEndPoints
         }
         else
         {
-            var response = await logic.AwaitTaskResultAsync(request);
+            var response = await logic.AwaitTaskResultAsync(request, cancellationToken);
             if (!string.IsNullOrEmpty(response))
             {
                 bool isError = false;
@@ -247,7 +256,8 @@ public static class TasksEndPoints
             }
             else
             {
-                context.Response.StatusCode = 500;
+                context.Response.StatusCode = 504;
+                context.Response.ContentType = "application/json";
                 await context.Response.WriteAsync(
                     JsonSerializer.Serialize(
                         new { error = "Could not get response from service" }

@@ -8,7 +8,7 @@ public interface ITaskBusinessLogic
     Task<bool> PublishSplitAudioBySilenceQueueAsync(TaskRequest taskRequest);
     Task<bool> PublishSplitTextQueueAsync(TaskRequest taskRequest);
     Task<bool> PublishDistributeQueueAsync(TaskRequest taskRequest);
-    Task<string> AwaitTaskResultAsync(TaskRequest taskRequest);
+    Task<string> AwaitTaskResultAsync(TaskRequest taskRequest, CancellationToken cancellationToken = default);
     IAsyncEnumerable<string> StreamTaskResultAsync(
         TaskRequest taskRequest,
         CancellationToken cancellationToken = default

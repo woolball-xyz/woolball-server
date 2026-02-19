@@ -100,22 +100,29 @@ public sealed class TaskBusinessLogic(IConnectionMultiplexer redis, IRedisStream
         }
     }
 
-    public async Task<string> AwaitTaskResultAsync(TaskRequest taskRequest)
+    public async Task<string> AwaitTaskResultAsync(TaskRequest taskRequest, CancellationToken cancellationToken = default)
     {
+        // 3-minute safety-net timeout (> 2-minute session tracking timeout)
+        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeoutCts.CancelAfter(TimeSpan.FromMinutes(3));
+
+        var subscriber = redis.GetSubscriber();
+        var queueName = $"result_queue_{taskRequest.Id}";
+
+        var channel = await subscriber.SubscribeAsync(RedisChannel.Literal(queueName));
+
         try
         {
-            var subscriber = redis.GetSubscriber();
-            var queueName = $"result_queue_{taskRequest.Id}";
-
-            var channel = await subscriber.SubscribeAsync(RedisChannel.Literal(queueName));
-
-            var result = await channel.ReadAsync();
-            await channel.UnsubscribeAsync();
+            var result = await channel.ReadAsync(timeoutCts.Token);
             return result.Message.ToString();
         }
-        catch (Exception ex)
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
-            throw new Exception($"Error waiting for task result: {ex.Message}", ex);
+            throw new TimeoutException($"Task {taskRequest.Id} timed out waiting for result");
+        }
+        finally
+        {
+            await channel.UnsubscribeAsync();
         }
     }
 

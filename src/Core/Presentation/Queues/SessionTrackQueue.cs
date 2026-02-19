@@ -31,16 +31,28 @@ public sealed class SessionTrackQueue(
                 var sessionConsumer = new RedisStreamConsumer(redis, StreamNames.SessionTracking);
                 var completionConsumer = new RedisStreamConsumer(redis, StreamNames.TaskCompletion);
 
-                await Task.WhenAll(
-                    sessionConsumer.ConsumeAsync(
-                        msg => ProcessSessionTrackingAsync(msg, db),
-                        stoppingToken
-                    ),
-                    completionConsumer.ConsumeAsync(
-                        ProcessTaskCompletionAsync,
-                        stoppingToken
-                    )
+                // Link a CTS so that if either consumer fails, both restart together
+                using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
+
+                var sessionTask = sessionConsumer.ConsumeAsync(
+                    msg => ProcessSessionTrackingAsync(msg, db),
+                    linkedCts.Token
                 );
+                var completionTask = completionConsumer.ConsumeAsync(
+                    ProcessTaskCompletionAsync,
+                    linkedCts.Token
+                );
+
+                // When either consumer exits (crash or error), cancel the other
+                var completed = await Task.WhenAny(sessionTask, completionTask);
+                linkedCts.Cancel();
+
+                // Await both to observe any exceptions
+                try { await Task.WhenAll(sessionTask, completionTask); }
+                catch (OperationCanceledException) { }
+
+                // Re-throw the original failure so the outer catch restarts both
+                await completed;
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { }
             catch (Exception e)

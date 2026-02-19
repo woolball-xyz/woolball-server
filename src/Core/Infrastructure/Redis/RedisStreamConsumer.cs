@@ -69,32 +69,20 @@ public sealed class RedisStreamConsumer
     {
         try
         {
-            var pending = await db.StreamPendingMessagesAsync(
-                _streamKey,
-                _groupName,
-                count: 100,
-                consumerName: RedisValue.Null,
-                minId: "-",
-                maxId: "+"
-            );
-
-            if (pending == null || pending.Length == 0)
-                return;
-
-            var messageIds = pending.Select(p => p.MessageId).ToArray();
-
-            var claimed = await db.StreamClaimAsync(
+            // Use XAUTOCLAIM to atomically find and claim messages idle > 30s
+            var result = await db.StreamAutoClaimAsync(
                 _streamKey,
                 _groupName,
                 _consumerName,
-                minIdleTimeInMs: 5000,
-                messageIds: messageIds
+                30000,
+                "0-0",
+                100
             );
 
-            if (claimed == null)
+            if (result.ClaimedEntries == null || result.ClaimedEntries.Length == 0)
                 return;
 
-            foreach (var entry in claimed)
+            foreach (var entry in result.ClaimedEntries)
             {
                 var data = entry["data"];
                 if (!data.IsNullOrEmpty)
