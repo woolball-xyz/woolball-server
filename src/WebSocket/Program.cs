@@ -1,5 +1,6 @@
 using System.Threading.RateLimiting;
 using Infrastructure;
+using WebSocket.DependencyInjection;
 using Microsoft.AspNetCore.RateLimiting;
 using Presentation;
 using Presentation.Websockets;

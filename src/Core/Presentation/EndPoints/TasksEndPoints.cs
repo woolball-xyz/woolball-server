@@ -147,7 +147,7 @@ public static class TasksEndPoints
     {
         try
         {
-            var request = await TaskRequest.CreateFromForm(context.Request.Form, task);
+            var request = await TaskRequestFactory.CreateFromForm(context.Request.Form, task);
             await ProcessTaskRequest(request, context, logic, cancellationToken);
         }
         catch (Exception e)
@@ -227,21 +227,23 @@ public static class TasksEndPoints
             var response = await logic.AwaitTaskResultAsync(request);
             if (!string.IsNullOrEmpty(response))
             {
-                if (
-                    response.Contains("\"Status\":\"Error\"")
-                    || response.Contains("\"error\":")
-                )
+                bool isError = false;
+                try
                 {
-                    context.Response.StatusCode = 500;
-                    context.Response.ContentType = "application/json";
-                    await context.Response.WriteAsync(response, cancellationToken);
+                    using var doc = JsonDocument.Parse(response);
+                    if (doc.RootElement.ValueKind == JsonValueKind.Object
+                        && doc.RootElement.TryGetProperty("Status", out var statusProp)
+                        && statusProp.ValueKind == JsonValueKind.String)
+                    {
+                        var status = statusProp.GetString();
+                        isError = status == "Error" || status == "failed";
+                    }
                 }
-                else
-                {
-                    context.Response.StatusCode = 200;
-                    context.Response.ContentType = "application/json";
-                    await context.Response.WriteAsync(response, cancellationToken);
-                }
+                catch (JsonException) { }
+
+                context.Response.StatusCode = isError ? 500 : 200;
+                context.Response.ContentType = "application/json";
+                await context.Response.WriteAsync(response, cancellationToken);
             }
             else
             {

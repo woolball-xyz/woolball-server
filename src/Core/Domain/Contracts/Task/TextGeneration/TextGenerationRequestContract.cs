@@ -1,6 +1,5 @@
 using System.ComponentModel.DataAnnotations;
 using System.Text.Json.Serialization;
-using Microsoft.AspNetCore.Http;
 
 namespace Domain.Contracts.Task.TextGeneration;
 
@@ -143,42 +142,4 @@ public class TextGenerationRequestContract
         };
     }
 
-    /// <summary>
-    /// Creates a TextGenerationRequestContract from form data
-    /// </summary>
-    public static async Task<TextGenerationRequestContract> CreateFromForm(IFormCollection form)
-    {
-        var request = new TextGenerationRequestContract
-        {
-            Provider = form["provider"].FirstOrDefault(),
-            Model = form["model"].FirstOrDefault(),
-            Input = form["input"].FirstOrDefault()
-        };
-
-        // Parse optional parameters
-        if (int.TryParse(form["top_k"].FirstOrDefault(), out var topK))
-            request.TopK = topK;
-
-        if (double.TryParse(form["top_p"].FirstOrDefault(), out var topP))
-            request.TopP = topP;
-
-        if (double.TryParse(form["temperature"].FirstOrDefault(), out var temperature))
-            request.Temperature = temperature;
-
-        if (double.TryParse(form["repetition_penalty"].FirstOrDefault(), out var repPenalty))
-            request.RepetitionPenalty = repPenalty;
-
-        // Provider-specific parameters
-        request.Dtype = form["dtype"].FirstOrDefault();
-
-        if (int.TryParse(form["max_length"].FirstOrDefault(), out var maxLength))
-            request.MaxLength = maxLength;
-
-        if (int.TryParse(form["max_new_tokens"].FirstOrDefault(), out var maxNewTokens))
-            request.MaxNewTokens = maxNewTokens;
-
-        // Add other parameter parsing as needed...
-
-        return request;
-    }
 }

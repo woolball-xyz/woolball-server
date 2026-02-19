@@ -6,7 +6,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using StackExchange.Redis;
 
-namespace Background;
+namespace Presentation.Queues;
 
 public sealed class SplitAudioBySilenceQueue(IServiceScopeFactory serviceScopeFactory)
     : BackgroundService

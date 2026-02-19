@@ -45,6 +45,7 @@ public sealed class TaskBusinessLogic(IConnectionMultiplexer redis) : ITaskBusin
         }
         catch (Exception ex)
         {
+            Console.WriteLine($"[TaskBusinessLogic] Error publishing to preprocessing queue: {ex.GetType().Name}: {ex.Message}");
             return false;
         }
     }
@@ -63,6 +64,7 @@ public sealed class TaskBusinessLogic(IConnectionMultiplexer redis) : ITaskBusin
         }
         catch (Exception ex)
         {
+            Console.WriteLine($"[TaskBusinessLogic] Error publishing to split audio queue: {ex.GetType().Name}: {ex.Message}");
             return false;
         }
     }
@@ -120,7 +122,7 @@ public sealed class TaskBusinessLogic(IConnectionMultiplexer redis) : ITaskBusin
         }
         catch (Exception ex)
         {
-            throw new Exception($"Error waiting for task result: {ex.Message}");
+            throw new Exception($"Error waiting for task result: {ex.Message}", ex);
         }
     }
 

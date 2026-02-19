@@ -16,14 +16,7 @@ namespace Application.Logic
 
         private static readonly ConcurrentDictionary<string, List<STTChunk>> _buffers = new();
 
-        private class StreamBuffer
-        {
-            public int NextExpected { get; set; } = 1;
-            public SortedDictionary<int, List<STTChunk>> Pending { get; } = new();
-            public int? LastOrder { get; set; }
-        }
-
-        private static readonly ConcurrentDictionary<string, StreamBuffer> _streamBuffers = new();
+        private static readonly ConcurrentDictionary<string, StreamBuffer<STTChunk>> _streamBuffers = new();
 
         public SpeechToTextLogic(IConnectionMultiplexer redis) => _redis = redis;
 
@@ -74,7 +67,7 @@ namespace Application.Logic
 
             if (isStream && !_streamBuffers.ContainsKey(requestId))
             {
-                _streamBuffers.TryAdd(requestId, new StreamBuffer());
+                _streamBuffers.TryAdd(requestId, new StreamBuffer<STTChunk>());
             }
 
             bool isLast =
@@ -95,7 +88,7 @@ namespace Application.Logic
                     && int.TryParse(ordObj?.ToString(), out var order)
                 )
                 {
-                    var buf = _streamBuffers.GetOrAdd(requestId, _ => new StreamBuffer());
+                    var buf = _streamBuffers.GetOrAdd(requestId, _ => new StreamBuffer<STTChunk>());
                     List<STTChunk> toSend = new();
                     bool sendCompletion = false;
 

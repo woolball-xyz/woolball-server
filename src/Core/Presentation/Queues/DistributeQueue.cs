@@ -39,81 +39,13 @@ public sealed class DistributeQueue : BackgroundService
 
                 subscribe.OnMessage(async message =>
                 {
-                    var taskRequestText = message.Message.ToString();
-                    if (string.IsNullOrEmpty(taskRequestText))
-                    {
-                        return;
-                    }
                     try
                     {
-                        var taskRequest = JsonSerializer.Deserialize<TaskRequest>(taskRequestText);
-                        if (taskRequest != null)
-                        {
-                            var (id, webSocket) =
-                                await _webSocketNodesQueue.GetAvailableWebsocketAsync();
-
-                            if (id == null)
-                            {
-                                throw new Exception("No available nodes");
-                            }
-
-                            taskRequest.PrivateArgs["node_id"] = id.ToString();
-
-                            await db.StringSetAsync($"task:{taskRequest.Id}", taskRequestText);
-
-                            await taskRequest.LoadInputIfNeeded();
-
-                            var encodedTask = Encoding.UTF8.GetBytes(
-                                JsonSerializer.Serialize(
-                                    new
-                                    {
-                                        Id = taskRequest.Id,
-                                        Key = taskRequest.Task,
-                                        Value = taskRequest.Kwargs,
-                                    }
-                                )
-                            );
-
-                            await webSocket.SendAsync(
-                                encodedTask,
-                                WebSocketMessageType.Text,
-                                true,
-                                stoppingToken
-                            );
-
-                            var subscriber = redis.GetSubscriber();
-
-                            var channel = RedisChannel.Literal("sesion_tracking_queue");
-
-                            await subscriber.PublishAsync(channel, taskRequest.Id.ToString());
-                        }
+                        await ProcessMessageAsync(message.Message, db, redis, stoppingToken);
                     }
-                    catch (Exception ex)
+                    catch (Exception e)
                     {
-                        Console.WriteLine($"Error in distribute queue: {ex.Message}");
-
-                        try
-                        {
-                            if (!string.IsNullOrEmpty(taskRequestText))
-                            {
-                                var taskRequest = JsonSerializer.Deserialize<TaskRequest>(
-                                    taskRequestText
-                                );
-                                if (taskRequest != null)
-                                {
-                                    var logic =
-                                        scope.ServiceProvider.GetRequiredService<Application.Logic.ITaskBusinessLogic>();
-                                    await logic.EmitTaskRequestErrorAsync(
-                                        taskRequest.Id.ToString()
-                                    );
-                                    Console.WriteLine($"Error emitted for task {taskRequest.Id}");
-                                }
-                            }
-                        }
-                        catch (Exception innerEx)
-                        {
-                            Console.WriteLine($"Failed to emit error: {innerEx.Message}");
-                        }
+                        Console.WriteLine($"[DistributeQueue] Error in callback: {e.Message}");
                     }
                 });
 
@@ -126,10 +58,90 @@ public sealed class DistributeQueue : BackgroundService
             }
         }
     }
-}
 
-public class WebSocketMessage
-{
-    public required string TargetId { get; set; }
-    public required string Content { get; set; }
+    private async Task ProcessMessageAsync(
+        RedisValue message,
+        IDatabase db,
+        IConnectionMultiplexer redis,
+        CancellationToken stoppingToken
+    )
+    {
+        var taskRequestText = message.ToString();
+        if (string.IsNullOrEmpty(taskRequestText))
+        {
+            return;
+        }
+        try
+        {
+            var taskRequest = JsonSerializer.Deserialize<TaskRequest>(taskRequestText);
+            if (taskRequest != null)
+            {
+                var (id, webSocket) =
+                    await _webSocketNodesQueue.GetAvailableWebsocketAsync();
+
+                if (id == null)
+                {
+                    throw new Exception("No available nodes");
+                }
+
+                taskRequest.PrivateArgs["node_id"] = id.ToString();
+
+                await db.StringSetAsync($"task:{taskRequest.Id}", taskRequestText);
+
+                await taskRequest.LoadInputIfNeeded();
+
+                var encodedTask = Encoding.UTF8.GetBytes(
+                    JsonSerializer.Serialize(
+                        new
+                        {
+                            Id = taskRequest.Id,
+                            Key = taskRequest.Task,
+                            Value = taskRequest.Kwargs,
+                        }
+                    )
+                );
+
+                await webSocket.SendAsync(
+                    encodedTask,
+                    WebSocketMessageType.Text,
+                    true,
+                    stoppingToken
+                );
+
+                var subscriber = redis.GetSubscriber();
+
+                var channel = RedisChannel.Literal("session_tracking_queue");
+
+                await subscriber.PublishAsync(channel, taskRequest.Id.ToString());
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error in distribute queue: {ex.Message}");
+
+            try
+            {
+                if (!string.IsNullOrEmpty(taskRequestText))
+                {
+                    var taskRequest = JsonSerializer.Deserialize<TaskRequest>(
+                        taskRequestText
+                    );
+                    if (taskRequest != null)
+                    {
+                        using var errorScope = _serviceScopeFactory.CreateScope();
+                        var logic =
+                            errorScope.ServiceProvider.GetRequiredService<Application.Logic.ITaskBusinessLogic>();
+                        await logic.EmitTaskRequestErrorAsync(
+                            taskRequest.Id.ToString()
+                        );
+                        Console.WriteLine($"Error emitted for task {taskRequest.Id}");
+                    }
+                }
+            }
+            catch (Exception innerEx)
+            {
+                Console.WriteLine($"Failed to emit error: {innerEx.Message}");
+            }
+        }
+    }
 }

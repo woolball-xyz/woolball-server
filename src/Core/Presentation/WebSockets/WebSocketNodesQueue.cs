@@ -91,8 +91,9 @@ public class WebSocketNodesQueue
                         disconnectedConnections.Add(kvp.Key);
                     }
                 }
-                catch
+                catch (Exception ex)
                 {
+                    Console.WriteLine($"[WebSocketNodesQueue] Error broadcasting to {kvp.Key}: {ex.GetType().Name}");
                     disconnectedConnections.Add(kvp.Key);
                 }
             }
@@ -131,9 +132,9 @@ public class WebSocketNodesQueue
                                 );
                             }
                         }
-                        catch
+                        catch (Exception ex)
                         {
-                            // Ignore send errors during cleanup broadcast
+                            Console.WriteLine($"[WebSocketNodesQueue] Cleanup broadcast error for {kvp.Key}: {ex.GetType().Name}");
                         }
                     }
                 }

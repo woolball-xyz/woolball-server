@@ -2,7 +2,7 @@ using Application.Logic;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 
-namespace Background;
+namespace Presentation.Workers;
 
 public sealed class TemplateWorker(IServiceScopeFactory serviceScopeFactory) : BackgroundService
 {

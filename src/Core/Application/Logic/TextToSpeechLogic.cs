@@ -16,14 +16,7 @@ public sealed class TextToSpeechLogic : ITextToSpeechLogic
 {
     private readonly IConnectionMultiplexer _redis;
 
-    private class StreamBuffer
-    {
-        public int NextExpected { get; set; } = 1;
-        public SortedDictionary<int, List<TTSResponse>> Pending { get; } = new();
-        public int? LastOrder { get; set; }
-    }
-
-    private static readonly ConcurrentDictionary<string, StreamBuffer> _streamBuffers = new();
+    private static readonly ConcurrentDictionary<string, StreamBuffer<TTSResponse>> _streamBuffers = new();
 
     public TextToSpeechLogic(IConnectionMultiplexer redis) => _redis = redis;
 
@@ -57,7 +50,7 @@ public sealed class TextToSpeechLogic : ITextToSpeechLogic
 
             if (isStream && !_streamBuffers.ContainsKey(responseQueueId))
             {
-                _streamBuffers.TryAdd(responseQueueId, new StreamBuffer());
+                _streamBuffers.TryAdd(responseQueueId, new StreamBuffer<TTSResponse>());
             }
 
             bool isLast =
@@ -78,7 +71,7 @@ public sealed class TextToSpeechLogic : ITextToSpeechLogic
                     && int.TryParse(ordObj?.ToString(), out var streamOrder)
                 )
                 {
-                    var buf = _streamBuffers.GetOrAdd(responseQueueId, _ => new StreamBuffer());
+                    var buf = _streamBuffers.GetOrAdd(responseQueueId, _ => new StreamBuffer<TTSResponse>());
                     List<TTSResponse> streamToSend = new();
                     bool sendCompletion = false;
 
@@ -131,7 +124,7 @@ public sealed class TextToSpeechLogic : ITextToSpeechLogic
                 {
                     var simpleBuffer = _streamBuffers.GetOrAdd(
                         responseQueueId,
-                        _ => new StreamBuffer()
+                        _ => new StreamBuffer<TTSResponse>()
                     );
 
                     int simpleOrder;
@@ -169,7 +162,7 @@ public sealed class TextToSpeechLogic : ITextToSpeechLogic
                 return;
             }
 
-            var batchBuffer = _streamBuffers.GetOrAdd(responseQueueId, _ => new StreamBuffer());
+            var batchBuffer = _streamBuffers.GetOrAdd(responseQueueId, _ => new StreamBuffer<TTSResponse>());
 
             int batchOrder = 1;
 

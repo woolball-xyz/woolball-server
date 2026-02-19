@@ -3,7 +3,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Presentation.Queues;
 using Presentation.Websockets;
 
-namespace Infrastructure;
+namespace WebSocket.DependencyInjection;
 
 public static class WebSocketExtensions
 {

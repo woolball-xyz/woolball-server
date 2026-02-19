@@ -169,7 +169,7 @@ public static class InputSanitizer
         }
     }
 
-    public static HttpClient CreateSafeHttpClient()
+    private static readonly Lazy<HttpClient> _httpClient = new(() =>
     {
         var handler = new HttpClientHandler
         {
@@ -181,5 +181,10 @@ public static class InputSanitizer
             Timeout = TimeSpan.FromSeconds(30),
             MaxResponseContentBufferSize = MaxFileSizeBytes
         };
+    });
+
+    public static HttpClient CreateSafeHttpClient()
+    {
+        return _httpClient.Value;
     }
 }

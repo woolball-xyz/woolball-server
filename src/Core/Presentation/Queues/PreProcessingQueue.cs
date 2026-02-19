@@ -5,7 +5,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using StackExchange.Redis;
 
-namespace Background;
+namespace Presentation.Queues;
 
 public sealed class PreProcessingQueue(IServiceScopeFactory serviceScopeFactory) : BackgroundService
 {
@@ -26,65 +26,13 @@ public sealed class PreProcessingQueue(IServiceScopeFactory serviceScopeFactory)
 
                 consumer.OnMessage(async message =>
                 {
-                    var logic = scope.ServiceProvider.GetRequiredService<ITaskBusinessLogic>();
-                    string? messageStr = message.Message.ToString();
-                    TaskRequest? taskRequest =
-                        messageStr != null
-                            ? JsonSerializer.Deserialize<TaskRequest>(messageStr)
-                            : null;
                     try
                     {
-                        if (taskRequest == null)
-                            return;
-
-                        // Route tasks based on their type
-                        switch (taskRequest.Task)
-                        {
-                            case var task when task == AvailableModels.SpeechToText:
-                                // Audio files need to be split by silence
-                                await logic.PublishSplitAudioBySilenceQueueAsync(taskRequest);
-                                break;
-
-                            case var task when task == AvailableModels.TextToSpeech:
-                                // Ensure input is properly formatted for text-to-speech
-                                if (EnsureValidTextToSpeechInput(taskRequest))
-                                {
-                                    // Text needs to be split for TTS processing
-                                    await logic.PublishSplitTextQueueAsync(taskRequest);
-                                }
-                                else
-                                {
-                                    // Input validation failed, emit error
-                                    Console.WriteLine(
-                                        $"Invalid input for TTS task: {taskRequest.Id}"
-                                    );
-                                    await logic.EmitTaskRequestErrorAsync(
-                                        taskRequest.Id.ToString()
-                                    );
-                                }
-                                break;
-
-                            case var task
-                                when task == AvailableModels.Translation
-                                    || task == AvailableModels.TextGeneration:
-                                // These tasks don't need preprocessing, send directly to distribution
-                                await logic.PublishDistributeQueueAsync(taskRequest);
-                                break;
-
-                            default:
-                                // Unknown task type, emit error
-                                Console.WriteLine($"Unknown task type: {taskRequest.Task}");
-                                await logic.EmitTaskRequestErrorAsync(taskRequest.Id.ToString());
-                                break;
-                        }
+                        await ProcessMessageAsync(message.Message);
                     }
                     catch (Exception e)
                     {
-                        Console.WriteLine($"Error in preprocessing queue: {e.Message}");
-                        if (taskRequest != null)
-                        {
-                            await logic.EmitTaskRequestErrorAsync(taskRequest.Id.ToString());
-                        }
+                        Console.WriteLine($"[PreProcessingQueue] Error in callback: {e.Message}");
                     }
                 });
 
@@ -96,6 +44,72 @@ public sealed class PreProcessingQueue(IServiceScopeFactory serviceScopeFactory)
                 Console.WriteLine($"Error in preprocessing queue: {e.Message}");
                 // Add delay before retry
                 await Task.Delay(5000, stoppingToken);
+            }
+        }
+    }
+
+    private async Task ProcessMessageAsync(RedisValue message)
+    {
+        using var scope = serviceScopeFactory.CreateScope();
+        var logic = scope.ServiceProvider.GetRequiredService<ITaskBusinessLogic>();
+
+        string? messageStr = message.ToString();
+        TaskRequest? taskRequest =
+            messageStr != null
+                ? JsonSerializer.Deserialize<TaskRequest>(messageStr)
+                : null;
+        try
+        {
+            if (taskRequest == null)
+                return;
+
+            // Route tasks based on their type
+            switch (taskRequest.Task)
+            {
+                case var task when task == AvailableModels.SpeechToText:
+                    // Audio files need to be split by silence
+                    await logic.PublishSplitAudioBySilenceQueueAsync(taskRequest);
+                    break;
+
+                case var task when task == AvailableModels.TextToSpeech:
+                    // Ensure input is properly formatted for text-to-speech
+                    if (EnsureValidTextToSpeechInput(taskRequest))
+                    {
+                        // Text needs to be split for TTS processing
+                        await logic.PublishSplitTextQueueAsync(taskRequest);
+                    }
+                    else
+                    {
+                        // Input validation failed, emit error
+                        Console.WriteLine(
+                            $"Invalid input for TTS task: {taskRequest.Id}"
+                        );
+                        await logic.EmitTaskRequestErrorAsync(
+                            taskRequest.Id.ToString()
+                        );
+                    }
+                    break;
+
+                case var task
+                    when task == AvailableModels.Translation
+                        || task == AvailableModels.TextGeneration:
+                    // These tasks don't need preprocessing, send directly to distribution
+                    await logic.PublishDistributeQueueAsync(taskRequest);
+                    break;
+
+                default:
+                    // Unknown task type, emit error
+                    Console.WriteLine($"Unknown task type: {taskRequest.Task}");
+                    await logic.EmitTaskRequestErrorAsync(taskRequest.Id.ToString());
+                    break;
+            }
+        }
+        catch (Exception e)
+        {
+            Console.WriteLine($"Error in preprocessing queue: {e.Message}");
+            if (taskRequest != null)
+            {
+                await logic.EmitTaskRequestErrorAsync(taskRequest.Id.ToString());
             }
         }
     }
