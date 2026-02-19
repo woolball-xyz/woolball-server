@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
@@ -13,12 +13,15 @@ namespace Application.Logic
     public sealed class SpeechToTextLogic : ISpeechToTextLogic
     {
         private readonly IConnectionMultiplexer _redis;
+        private readonly RedisChunkBuffer<STTChunk> _chunkBuffer;
 
-        private static readonly ConcurrentDictionary<string, List<STTChunk>> _buffers = new();
+        private static readonly ConcurrentDictionary<string, int> _nextExpected = new();
 
-        private static readonly ConcurrentDictionary<string, StreamBuffer<STTChunk>> _streamBuffers = new();
-
-        public SpeechToTextLogic(IConnectionMultiplexer redis) => _redis = redis;
+        public SpeechToTextLogic(IConnectionMultiplexer redis, RedisChunkBuffer<STTChunk> chunkBuffer)
+        {
+            _redis = redis;
+            _chunkBuffer = chunkBuffer;
+        }
 
         public async Task ProcessTaskResponseAsync(
             TaskResponse taskResponse,
@@ -65,11 +68,6 @@ namespace Application.Logic
                 && bool.TryParse(streamObj?.ToString(), out var s)
                 && s;
 
-            if (isStream && !_streamBuffers.ContainsKey(requestId))
-            {
-                _streamBuffers.TryAdd(requestId, new StreamBuffer<STTChunk>());
-            }
-
             bool isLast =
                 taskRequest.PrivateArgs.TryGetValue("last", out var lastObj)
                 && bool.TryParse(lastObj?.ToString(), out var l)
@@ -88,43 +86,18 @@ namespace Application.Logic
                     && int.TryParse(ordObj?.ToString(), out var order)
                 )
                 {
-                    var buf = _streamBuffers.GetOrAdd(requestId, _ => new StreamBuffer<STTChunk>());
-                    List<STTChunk> toSend = new();
-                    bool sendCompletion = false;
+                    await _chunkBuffer.AddChunkAsync(requestId, order, stt, isLast);
 
-                    lock (buf)
+                    int nextExpected = _nextExpected.GetOrAdd(requestId, 1);
+                    var (drained, newNext, isComplete) =
+                        await _chunkBuffer.TryDrainStreamingAsync(requestId, nextExpected);
+                    _nextExpected[requestId] = newNext;
+
+                    if (drained.Count > 0)
                     {
-                        if (isLast)
-                        {
-                            buf.LastOrder = order;
-                        }
-
-                        if (!buf.Pending.TryGetValue(order, out var list))
-                        {
-                            list = new List<STTChunk>();
-                            buf.Pending[order] = list;
-                        }
-                        list.Add(stt);
-
-                        while (buf.Pending.TryGetValue(buf.NextExpected, out var ready))
-                        {
-                            toSend.AddRange(ready);
-                            buf.Pending.Remove(buf.NextExpected);
-                            buf.NextExpected++;
-                        }
-
-                        if (buf.LastOrder.HasValue && buf.NextExpected > buf.LastOrder.Value)
-                        {
-                            sendCompletion = true;
-                            _streamBuffers.TryRemove(requestId, out _);
-                        }
+                        await DispatchBatchAsync(requestId, drained, sendCompletion: isComplete);
                     }
-
-                    if (toSend.Count > 0)
-                    {
-                        await DispatchBatchAsync(requestId, toSend, sendCompletion: sendCompletion);
-                    }
-                    else if (sendCompletion)
+                    else if (isComplete)
                     {
                         await DispatchBatchAsync(
                             requestId,
@@ -132,44 +105,49 @@ namespace Application.Logic
                             sendCompletion: true
                         );
                     }
+
+                    if (isComplete)
+                    {
+                        _nextExpected.TryRemove(requestId, out _);
+                        await _chunkBuffer.CleanupAsync(requestId);
+                    }
                 }
                 else
                 {
                     await DispatchBatchAsync(requestId, sttChunksList, sendCompletion: isLast);
-
-                    if (isLast)
-                    {
-                        _streamBuffers.TryRemove(requestId, out _);
-                    }
                 }
 
                 return;
             }
 
-            // Non-streaming case
-            var buffer = _buffers.GetOrAdd(requestId, _ => new List<STTChunk>());
-            lock (buffer)
+            // Non-streaming batch case
+            if (
+                taskRequest.PrivateArgs.TryGetValue("order", out var batchOrdObj)
+                && int.TryParse(batchOrdObj?.ToString(), out var batchOrder)
+            )
             {
-                buffer.AddRange(sttChunksList);
+                await _chunkBuffer.AddChunkAsync(requestId, batchOrder, stt, isLast);
+            }
+            else
+            {
+                await _chunkBuffer.AddChunkAsync(requestId, 1, stt, isLast);
             }
 
             if (isLast)
             {
-                List<STTChunk> toSend;
-                lock (buffer)
+                var allChunks = await _chunkBuffer.TryGetAllBatchAsync(requestId);
+                if (allChunks != null)
                 {
-                    toSend = buffer
+                    var sorted = allChunks
                         .OrderBy(c =>
                             c.Chunks != null && c.Chunks.Count > 0
                                 ? c.Chunks[0].Timestamp[0]
                                 : double.MaxValue
                         )
                         .ToList();
-                    buffer.Clear();
-                }
-                _buffers.TryRemove(requestId, out _);
 
-                await DispatchBatchAsync(requestId, toSend, sendCompletion: true);
+                    await DispatchBatchAsync(requestId, sorted, sendCompletion: true);
+                }
             }
         }
 

@@ -1,4 +1,5 @@
 ﻿using Application.Logic;
+using Domain.Contracts;
 using FluentValidation;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -13,6 +14,8 @@ public static class DependencyInjection
         services.AddScoped<ITextToSpeechLogic, TextToSpeechLogic>();
         services.AddScoped<ITextGenerationLogic, TextGenerationLogic>();
         services.AddScoped<ITranslationLogic, TranslationLogic>();
+        services.AddSingleton<RedisChunkBuffer<STTChunk>>();
+        services.AddSingleton<RedisChunkBuffer<TTSResponse>>();
         return services;
     }
 }

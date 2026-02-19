@@ -15,10 +15,15 @@ namespace Application.Logic;
 public sealed class TextToSpeechLogic : ITextToSpeechLogic
 {
     private readonly IConnectionMultiplexer _redis;
+    private readonly RedisChunkBuffer<TTSResponse> _chunkBuffer;
 
-    private static readonly ConcurrentDictionary<string, StreamBuffer<TTSResponse>> _streamBuffers = new();
+    private static readonly ConcurrentDictionary<string, int> _nextExpected = new();
 
-    public TextToSpeechLogic(IConnectionMultiplexer redis) => _redis = redis;
+    public TextToSpeechLogic(IConnectionMultiplexer redis, RedisChunkBuffer<TTSResponse> chunkBuffer)
+    {
+        _redis = redis;
+        _chunkBuffer = chunkBuffer;
+    }
 
     public async Task ProcessTaskResponseAsync(TaskResponse taskResponse, TaskRequest taskRequest)
     {
@@ -48,11 +53,6 @@ public sealed class TextToSpeechLogic : ITextToSpeechLogic
                 && bool.TryParse(streamObj?.ToString(), out var s)
                 && s;
 
-            if (isStream && !_streamBuffers.ContainsKey(responseQueueId))
-            {
-                _streamBuffers.TryAdd(responseQueueId, new StreamBuffer<TTSResponse>());
-            }
-
             bool isLast =
                 taskRequest.PrivateArgs.TryGetValue("last", out var lastObj)
                 && bool.TryParse(lastObj?.ToString(), out var l)
@@ -71,47 +71,23 @@ public sealed class TextToSpeechLogic : ITextToSpeechLogic
                     && int.TryParse(ordObj?.ToString(), out var streamOrder)
                 )
                 {
-                    var buf = _streamBuffers.GetOrAdd(responseQueueId, _ => new StreamBuffer<TTSResponse>());
-                    List<TTSResponse> streamToSend = new();
-                    bool sendCompletion = false;
+                    // Streaming with order
+                    await _chunkBuffer.AddChunkAsync(responseQueueId, streamOrder, tts, isLast);
 
-                    lock (buf)
-                    {
-                        if (isLast)
-                        {
-                            buf.LastOrder = streamOrder;
-                        }
+                    int nextExpected = _nextExpected.GetOrAdd(responseQueueId, 1);
+                    var (drained, newNext, isComplete) =
+                        await _chunkBuffer.TryDrainStreamingAsync(responseQueueId, nextExpected);
+                    _nextExpected[responseQueueId] = newNext;
 
-                        if (!buf.Pending.TryGetValue(streamOrder, out var list))
-                        {
-                            list = new List<TTSResponse>();
-                            buf.Pending[streamOrder] = list;
-                        }
-                        list.Add(tts);
-
-                        while (buf.Pending.TryGetValue(buf.NextExpected, out var ready))
-                        {
-                            streamToSend.AddRange(ready);
-                            buf.Pending.Remove(buf.NextExpected);
-                            buf.NextExpected++;
-                        }
-
-                        if (buf.LastOrder.HasValue && buf.NextExpected > buf.LastOrder.Value)
-                        {
-                            sendCompletion = true;
-                            _streamBuffers.TryRemove(responseQueueId, out _);
-                        }
-                    }
-
-                    if (streamToSend.Count > 0)
+                    if (drained.Count > 0)
                     {
                         await DispatchBatchAsync(
                             responseQueueId,
-                            streamToSend,
-                            sendCompletion: sendCompletion
+                            drained,
+                            sendCompletion: isComplete
                         );
                     }
-                    else if (sendCompletion)
+                    else if (isComplete)
                     {
                         await DispatchBatchAsync(
                             responseQueueId,
@@ -119,53 +95,36 @@ public sealed class TextToSpeechLogic : ITextToSpeechLogic
                             sendCompletion: true
                         );
                     }
+
+                    if (isComplete)
+                    {
+                        _nextExpected.TryRemove(responseQueueId, out _);
+                        await _chunkBuffer.CleanupAsync(responseQueueId);
+                    }
                 }
                 else
                 {
-                    var simpleBuffer = _streamBuffers.GetOrAdd(
-                        responseQueueId,
-                        _ => new StreamBuffer<TTSResponse>()
-                    );
-
-                    int simpleOrder;
-                    lock (simpleBuffer)
-                    {
-                        simpleOrder = simpleBuffer.NextExpected++;
-                    }
-
-                    List<TTSResponse> simpleToSend = new();
-                    bool simpleSendCompletion = false;
-
-                    lock (simpleBuffer)
-                    {
-                        if (isLast)
-                        {
-                            simpleBuffer.LastOrder = simpleOrder;
-                        }
-
-                        simpleToSend.Add(tts);
-
-                        if (isLast)
-                        {
-                            simpleSendCompletion = true;
-                            _streamBuffers.TryRemove(responseQueueId, out _);
-                        }
-                    }
+                    // Streaming without order — auto-assign order and dispatch immediately
+                    int autoOrder = await _chunkBuffer.GetNextOrderAsync(responseQueueId);
+                    await _chunkBuffer.AddChunkAsync(responseQueueId, autoOrder, tts, isLast);
 
                     await DispatchBatchAsync(
                         responseQueueId,
-                        simpleToSend,
-                        sendCompletion: simpleSendCompletion
+                        ttsResponseList,
+                        sendCompletion: isLast
                     );
+
+                    if (isLast)
+                    {
+                        await _chunkBuffer.CleanupAsync(responseQueueId);
+                    }
                 }
 
                 return;
             }
 
-            var batchBuffer = _streamBuffers.GetOrAdd(responseQueueId, _ => new StreamBuffer<TTSResponse>());
-
+            // Non-streaming batch case
             int batchOrder = 1;
-
             if (taskRequest.PrivateArgs.TryGetValue("order", out var batchOrderObj))
             {
                 if (int.TryParse(batchOrderObj?.ToString(), out int parsedOrder))
@@ -174,72 +133,31 @@ public sealed class TextToSpeechLogic : ITextToSpeechLogic
                 }
             }
 
-            bool shouldSendResponse = false;
-            List<TTSResponse> batchToSend = new List<TTSResponse>();
+            await _chunkBuffer.AddChunkAsync(responseQueueId, batchOrder, tts, isLast);
 
-            lock (batchBuffer)
+            if (isLast)
             {
-                if (isLast)
+                var allChunks = await _chunkBuffer.TryGetAllBatchAsync(responseQueueId);
+                if (allChunks != null && allChunks.Count > 0)
                 {
-                    batchBuffer.LastOrder = batchOrder;
+                    await DispatchBatchAsync(responseQueueId, allChunks, sendCompletion: true);
                 }
-
-                if (!batchBuffer.Pending.TryGetValue(batchOrder, out var list))
-                {
-                    list = new List<TTSResponse>();
-                    batchBuffer.Pending[batchOrder] = list;
-                }
-                list.AddRange(ttsResponseList);
-
-                if (batchBuffer.LastOrder.HasValue)
-                {
-                    bool hasAllChunks = true;
-                    for (int i = 1; i <= batchBuffer.LastOrder.Value; i++)
-                    {
-                        if (!batchBuffer.Pending.ContainsKey(i))
-                        {
-                            hasAllChunks = false;
-                            break;
-                        }
-                    }
-
-                    if (hasAllChunks)
-                    {
-                        for (int i = 1; i <= batchBuffer.LastOrder.Value; i++)
-                        {
-                            if (batchBuffer.Pending.TryGetValue(i, out var chunks))
-                            {
-                                batchToSend.AddRange(chunks);
-                            }
-                        }
-
-                        batchBuffer.Pending.Clear();
-                        _streamBuffers.TryRemove(responseQueueId, out _);
-                        shouldSendResponse = true;
-                    }
-                }
-            }
-
-            if (shouldSendResponse && batchToSend.Count > 0)
-            {
-                await DispatchBatchAsync(responseQueueId, batchToSend, sendCompletion: true);
             }
         }
         catch (Exception ex)
         {
             try
             {
-                var subscriber = _redis.GetSubscriber();
-
                 bool hasParent = taskRequest.PrivateArgs.TryGetValue("parent", out var parentObj);
                 string responseQueueId =
                     hasParent && parentObj != null
                         ? parentObj.ToString()!
                         : taskRequest.Id.ToString();
-                var resultQueueName = $"result_queue_{responseQueueId}";
+
+                await _chunkBuffer.CleanupAsync(responseQueueId);
 
                 Console.WriteLine(
-                    $"[TextToSpeechLogic] Sending error response to queue {resultQueueName}"
+                    $"[TextToSpeechLogic] Sending error response to queue result_queue_{responseQueueId}"
                 );
 
                 await DispatchBatchAsync(
@@ -257,7 +175,7 @@ public sealed class TextToSpeechLogic : ITextToSpeechLogic
                 );
 
                 Console.WriteLine(
-                    $"[TextToSpeechLogic] Sent error response to prevent retries for task queue {resultQueueName}"
+                    $"[TextToSpeechLogic] Sent error response to prevent retries for task queue result_queue_{responseQueueId}"
                 );
             }
             catch (Exception innerEx)

@@ -2,6 +2,7 @@ using System.IO;
 using System.Text.Json;
 using Application.Logic;
 using Domain.Utilities;
+using Infrastructure.Redis;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using StackExchange.Redis;
@@ -17,61 +18,28 @@ public sealed class SplitAudioBySilenceQueue(IServiceScopeFactory serviceScopeFa
         {
             try
             {
-                await ProcessQueueAsync();
-
-                // Keep the connection alive
-                await Task.Delay(Timeout.Infinite, stoppingToken);
+                using var scope = serviceScopeFactory.CreateScope();
+                var redis = scope.ServiceProvider.GetRequiredService<IConnectionMultiplexer>();
+                var consumer = new RedisStreamConsumer(redis, StreamNames.SplitAudioBySilence);
+                await consumer.ConsumeAsync(ProcessMessageAsync, stoppingToken);
             }
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { }
             catch (Exception e)
             {
-                Console.WriteLine($"Error in preprocessing queue: {e.Message}");
-                // Add delay before retry
+                Console.WriteLine($"Error in split audio queue: {e.Message}");
                 await Task.Delay(5000, stoppingToken);
             }
         }
     }
 
-    private async Task ProcessQueueAsync()
+    private async Task ProcessMessageAsync(string message)
     {
         using var scope = serviceScopeFactory.CreateScope();
-        IConnectionMultiplexer redis =
-            scope.ServiceProvider.GetRequiredService<IConnectionMultiplexer>();
-
-        var subscriber = redis.GetSubscriber();
-
-        var consumer = await subscriber.SubscribeAsync(
-            RedisChannel.Literal("split_audio_by_silence_queue")
-        );
-
-        consumer.OnMessage(
-            async (message) =>
-            {
-                try
-                {
-                    await ProccessMessageAsync(message.Message);
-                }
-                catch (Exception e)
-                {
-                    //emit error!!!
-                    Console.WriteLine($"Error in preprocessing queue: {e.Message}");
-                }
-            }
-        );
-    }
-
-    private async Task ProccessMessageAsync(RedisValue message)
-    {
-        using var scope = serviceScopeFactory.CreateScope();
-        IConnectionMultiplexer redis =
-            scope.ServiceProvider.GetRequiredService<IConnectionMultiplexer>();
-
-        var subscriber = redis.GetSubscriber();
         var logic = scope.ServiceProvider.GetRequiredService<ITaskBusinessLogic>();
 
-        string? messageStr = message.ToString();
         var request =
-            messageStr != null
-                ? System.Text.Json.JsonSerializer.Deserialize<TaskRequest>(messageStr)
+            !string.IsNullOrEmpty(message)
+                ? JsonSerializer.Deserialize<TaskRequest>(message)
                 : null;
         if (request == null)
             return;
@@ -113,7 +81,5 @@ public sealed class SplitAudioBySilenceQueue(IServiceScopeFactory serviceScopeFa
             request.Id = Guid.NewGuid();
             await logic.PublishDistributeQueueAsync(request);
         }
-
-        //update taskSession with count of segments waiting to be processed
     }
 }

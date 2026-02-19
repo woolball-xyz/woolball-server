@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Application.Logic;
 using Contracts.Constants;
+using Infrastructure.Redis;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using StackExchange.Redis;
@@ -16,47 +17,27 @@ public sealed class PreProcessingQueue(IServiceScopeFactory serviceScopeFactory)
             try
             {
                 using var scope = serviceScopeFactory.CreateScope();
-                IConnectionMultiplexer redis =
-                    scope.ServiceProvider.GetRequiredService<IConnectionMultiplexer>();
-
-                var subscriber = redis.GetSubscriber();
-                var consumer = await subscriber.SubscribeAsync(
-                    RedisChannel.Literal("preprocessing_queue")
-                );
-
-                consumer.OnMessage(async message =>
-                {
-                    try
-                    {
-                        await ProcessMessageAsync(message.Message);
-                    }
-                    catch (Exception e)
-                    {
-                        Console.WriteLine($"[PreProcessingQueue] Error in callback: {e.Message}");
-                    }
-                });
-
-                // Keep the connection alive
-                await Task.Delay(Timeout.Infinite, stoppingToken);
+                var redis = scope.ServiceProvider.GetRequiredService<IConnectionMultiplexer>();
+                var consumer = new RedisStreamConsumer(redis, StreamNames.PreProcessing);
+                await consumer.ConsumeAsync(ProcessMessageAsync, stoppingToken);
             }
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { }
             catch (Exception e)
             {
                 Console.WriteLine($"Error in preprocessing queue: {e.Message}");
-                // Add delay before retry
                 await Task.Delay(5000, stoppingToken);
             }
         }
     }
 
-    private async Task ProcessMessageAsync(RedisValue message)
+    private async Task ProcessMessageAsync(string message)
     {
         using var scope = serviceScopeFactory.CreateScope();
         var logic = scope.ServiceProvider.GetRequiredService<ITaskBusinessLogic>();
 
-        string? messageStr = message.ToString();
         TaskRequest? taskRequest =
-            messageStr != null
-                ? JsonSerializer.Deserialize<TaskRequest>(messageStr)
+            !string.IsNullOrEmpty(message)
+                ? JsonSerializer.Deserialize<TaskRequest>(message)
                 : null;
         try
         {

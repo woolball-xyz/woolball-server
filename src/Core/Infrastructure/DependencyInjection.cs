@@ -1,4 +1,5 @@
-﻿using Microsoft.Extensions.Configuration;
+﻿using Infrastructure.Redis;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using StackExchange.Redis;
 
@@ -16,9 +17,16 @@ public static class DependencyInjection
             ?? configuration.GetConnectionString("RedisConnection")
             ?? throw new KeyNotFoundException("RedisConnection");
 
+        var options = ConfigurationOptions.Parse(connectionString);
+        options.AbortOnConnectFail = false;
+        options.ConnectRetry = 3;
+        options.ReconnectRetryPolicy = new ExponentialRetry(5000);
+
         services.AddSingleton<IConnectionMultiplexer>(
-            ConnectionMultiplexer.Connect(connectionString)
+            ConnectionMultiplexer.Connect(options)
         );
+
+        services.AddSingleton<IRedisStreamPublisher, RedisStreamPublisher>();
 
         return services;
     }

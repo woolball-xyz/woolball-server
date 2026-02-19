@@ -1,9 +1,10 @@
-﻿using Domain.Contracts;
+using Domain.Contracts;
+using Infrastructure.Redis;
 using StackExchange.Redis;
 
 namespace Application.Logic;
 
-public sealed class TaskBusinessLogic(IConnectionMultiplexer redis) : ITaskBusinessLogic
+public sealed class TaskBusinessLogic(IConnectionMultiplexer redis, IRedisStreamPublisher streamPublisher) : ITaskBusinessLogic
 {
     public async Task<bool> EmitTaskRequestErrorAsync(string taskRequestId)
     {
@@ -35,10 +36,8 @@ public sealed class TaskBusinessLogic(IConnectionMultiplexer redis) : ITaskBusin
         try
         {
             Console.WriteLine("Publishing preprocessing queue...");
-            var subscriber = redis.GetSubscriber();
-            var queueName = RedisChannel.Literal("preprocessing_queue");
-            await subscriber.PublishAsync(
-                queueName,
+            await streamPublisher.PublishAsync(
+                StreamNames.PreProcessing,
                 System.Text.Json.JsonSerializer.Serialize(taskRequest)
             );
             return true;
@@ -54,10 +53,8 @@ public sealed class TaskBusinessLogic(IConnectionMultiplexer redis) : ITaskBusin
     {
         try
         {
-            var subscriber = redis.GetSubscriber();
-            var queueName = RedisChannel.Literal("split_audio_by_silence_queue");
-            await subscriber.PublishAsync(
-                queueName,
+            await streamPublisher.PublishAsync(
+                StreamNames.SplitAudioBySilence,
                 System.Text.Json.JsonSerializer.Serialize(taskRequest)
             );
             return true;
@@ -73,10 +70,8 @@ public sealed class TaskBusinessLogic(IConnectionMultiplexer redis) : ITaskBusin
     {
         try
         {
-            var subscriber = redis.GetSubscriber();
-            var queueName = RedisChannel.Literal("split_text_queue");
-            await subscriber.PublishAsync(
-                queueName,
+            await streamPublisher.PublishAsync(
+                StreamNames.SplitText,
                 System.Text.Json.JsonSerializer.Serialize(taskRequest)
             );
             return true;
@@ -92,10 +87,8 @@ public sealed class TaskBusinessLogic(IConnectionMultiplexer redis) : ITaskBusin
     {
         try
         {
-            var subscriber = redis.GetSubscriber();
-            var queueName = RedisChannel.Literal("distribute_queue");
-            await subscriber.PublishAsync(
-                queueName,
+            await streamPublisher.PublishAsync(
+                StreamNames.Distribute,
                 System.Text.Json.JsonSerializer.Serialize(taskRequest)
             );
             return true;
@@ -128,6 +121,7 @@ public sealed class TaskBusinessLogic(IConnectionMultiplexer redis) : ITaskBusin
 
     public async IAsyncEnumerable<string> StreamTaskResultAsync(
         TaskRequest taskRequest,
+        [System.Runtime.CompilerServices.EnumeratorCancellation]
         CancellationToken cancellationToken = default
     )
     {
@@ -136,24 +130,31 @@ public sealed class TaskBusinessLogic(IConnectionMultiplexer redis) : ITaskBusin
 
         var channel = await subscriber.SubscribeAsync(RedisChannel.Literal(queueName));
 
-        while (!cancellationToken.IsCancellationRequested)
+        try
         {
-            var message = await channel.ReadAsync(cancellationToken);
-            if (message.Message.IsNullOrEmpty)
-                continue;
-
-            string messageText = message.Message.ToString();
-
-            if (
-                messageText.Contains("\"Status\":\"Completed\"", StringComparison.OrdinalIgnoreCase)
-            )
+            while (!cancellationToken.IsCancellationRequested)
             {
-                break;
+                var message = await channel.ReadAsync(cancellationToken);
+                if (message.Message.IsNullOrEmpty)
+                    continue;
+
+                string messageText = message.Message.ToString();
+
+                if (messageText.Contains("\"Status\":\"Completed\"", StringComparison.OrdinalIgnoreCase))
+                    break;
+
+                if (messageText.Contains("\"Status\":\"Error\"", StringComparison.OrdinalIgnoreCase))
+                {
+                    yield return messageText;
+                    break;
+                }
+
+                yield return messageText;
             }
-
-            yield return messageText;
         }
-
-        await channel.UnsubscribeAsync();
+        finally
+        {
+            await channel.UnsubscribeAsync();
+        }
     }
 }

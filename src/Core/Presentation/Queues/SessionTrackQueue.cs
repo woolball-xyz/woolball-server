@@ -1,13 +1,17 @@
 using System.Collections.Concurrent;
 using System.Text.Json;
 using Domain.Contracts;
+using Infrastructure.Redis;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using StackExchange.Redis;
 
 namespace Presentation.Queues;
 
-public sealed class SessionTrackQueue(IServiceScopeFactory serviceScopeFactory) : BackgroundService
+public sealed class SessionTrackQueue(
+    IServiceScopeFactory serviceScopeFactory,
+    IRedisStreamPublisher publisher
+) : BackgroundService
 {
     private readonly ConcurrentDictionary<Guid, CancellationTokenSource> _taskTimers = new();
 
@@ -21,66 +25,24 @@ public sealed class SessionTrackQueue(IServiceScopeFactory serviceScopeFactory) 
             try
             {
                 using var scope = serviceScopeFactory.CreateScope();
-                IConnectionMultiplexer redis =
-                    scope.ServiceProvider.GetRequiredService<IConnectionMultiplexer>();
+                var redis = scope.ServiceProvider.GetRequiredService<IConnectionMultiplexer>();
                 var db = redis.GetDatabase();
-                var subscriber = redis.GetSubscriber();
 
-                var sessionTrackChannel = await subscriber.SubscribeAsync(
-                    RedisChannel.Literal("session_tracking_queue")
+                var sessionConsumer = new RedisStreamConsumer(redis, StreamNames.SessionTracking);
+                var completionConsumer = new RedisStreamConsumer(redis, StreamNames.TaskCompletion);
+
+                await Task.WhenAll(
+                    sessionConsumer.ConsumeAsync(
+                        msg => ProcessSessionTrackingAsync(msg, db),
+                        stoppingToken
+                    ),
+                    completionConsumer.ConsumeAsync(
+                        ProcessTaskCompletionAsync,
+                        stoppingToken
+                    )
                 );
-
-                var taskCompletionChannel = await subscriber.SubscribeAsync(
-                    RedisChannel.Literal("task_completion")
-                );
-
-                sessionTrackChannel.OnMessage(message =>
-                {
-                    try
-                    {
-                        var messageStr = message.Message.ToString();
-                        if (string.IsNullOrEmpty(messageStr))
-                            return;
-
-                        if (!Guid.TryParse(messageStr, out var taskId))
-                            return;
-
-                        StartTaskTracking(taskId, db, subscriber);
-                    }
-                    catch (Exception ex)
-                    {
-                        Console.WriteLine(
-                            $"Error processing session tracking message: {ex.Message}"
-                        );
-                    }
-                });
-
-                taskCompletionChannel.OnMessage(message =>
-                {
-                    try
-                    {
-                        var messageStr = message.Message.ToString();
-                        if (string.IsNullOrEmpty(messageStr))
-                            return;
-
-                        var completionData = JsonSerializer.Deserialize<TaskCompletionData>(
-                            messageStr
-                        );
-                        if (completionData == null)
-                            return;
-
-                        CancelTaskTracking(completionData.TaskRequestId);
-                    }
-                    catch (Exception ex)
-                    {
-                        Console.WriteLine(
-                            $"Error processing task completion message: {ex.Message}"
-                        );
-                    }
-                });
-
-                await Task.Delay(Timeout.Infinite, stoppingToken);
             }
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { }
             catch (Exception e)
             {
                 Console.WriteLine($"Error in session track queue: {e.Message}");
@@ -89,7 +51,50 @@ public sealed class SessionTrackQueue(IServiceScopeFactory serviceScopeFactory) 
         }
     }
 
-    private void StartTaskTracking(Guid taskId, IDatabase db, ISubscriber subscriber)
+    private Task ProcessSessionTrackingAsync(string message, IDatabase db)
+    {
+        try
+        {
+            if (string.IsNullOrEmpty(message))
+                return Task.CompletedTask;
+
+            if (!Guid.TryParse(message, out var taskId))
+                return Task.CompletedTask;
+
+            StartTaskTracking(taskId, db);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine(
+                $"Error processing session tracking message: {ex.Message}"
+            );
+        }
+        return Task.CompletedTask;
+    }
+
+    private Task ProcessTaskCompletionAsync(string message)
+    {
+        try
+        {
+            if (string.IsNullOrEmpty(message))
+                return Task.CompletedTask;
+
+            var completionData = JsonSerializer.Deserialize<TaskCompletionData>(message);
+            if (completionData == null)
+                return Task.CompletedTask;
+
+            CancelTaskTracking(completionData.TaskRequestId);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine(
+                $"Error processing task completion message: {ex.Message}"
+            );
+        }
+        return Task.CompletedTask;
+    }
+
+    private void StartTaskTracking(Guid taskId, IDatabase db)
     {
         var cts = new CancellationTokenSource();
         _taskTimers.AddOrUpdate(taskId, cts, (key, oldCts) =>
@@ -148,12 +153,9 @@ public sealed class SessionTrackQueue(IServiceScopeFactory serviceScopeFactory) 
                     taskRequest.PrivateArgs["retry_count"] = retryCount + 1;
 
                     var updatedTaskData = JsonSerializer.Serialize(taskRequest);
-                    await db.StringSetAsync($"task:{taskId}", updatedTaskData);
+                    await db.StringSetAsync($"task:{taskId}", updatedTaskData, TimeSpan.FromMinutes(10));
 
-                    await subscriber.PublishAsync(
-                        RedisChannel.Literal("distribute_queue"),
-                        updatedTaskData
-                    );
+                    await publisher.PublishAsync(StreamNames.Distribute, updatedTaskData);
                     Console.WriteLine(
                         $"Task {taskId} redistributed due to timeout (attempt {retryCount + 1} of {MAX_RETRY_ATTEMPTS})"
                     );
@@ -165,6 +167,10 @@ public sealed class SessionTrackQueue(IServiceScopeFactory serviceScopeFactory) 
                     );
 
                     await db.KeyDeleteAsync($"task:{taskId}");
+
+                    using var scope = serviceScopeFactory.CreateScope();
+                    var redis = scope.ServiceProvider.GetRequiredService<IConnectionMultiplexer>();
+                    var subscriber = redis.GetSubscriber();
 
                     var failureMessage = JsonSerializer.Serialize(
                         new TaskCompletionData { TaskRequestId = taskId, Status = "failed" }

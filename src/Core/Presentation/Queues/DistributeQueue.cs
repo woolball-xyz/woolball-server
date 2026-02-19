@@ -1,6 +1,7 @@
 using System.Net.WebSockets;
 using System.Text;
 using System.Text.Json;
+using Infrastructure.Redis;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Presentation.Websockets;
@@ -12,14 +13,17 @@ public sealed class DistributeQueue : BackgroundService
 {
     private readonly IServiceScopeFactory _serviceScopeFactory;
     private readonly WebSocketNodesQueue _webSocketNodesQueue;
+    private readonly IRedisStreamPublisher _publisher;
 
     public DistributeQueue(
         IServiceScopeFactory serviceScopeFactory,
-        WebSocketNodesQueue webSocketNodesQueue
+        WebSocketNodesQueue webSocketNodesQueue,
+        IRedisStreamPublisher publisher
     )
     {
         _serviceScopeFactory = serviceScopeFactory;
         _webSocketNodesQueue = webSocketNodesQueue;
+        _publisher = publisher;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -29,28 +33,11 @@ public sealed class DistributeQueue : BackgroundService
             try
             {
                 using var scope = _serviceScopeFactory.CreateScope();
-                IConnectionMultiplexer redis =
-                    scope.ServiceProvider.GetRequiredService<IConnectionMultiplexer>();
-
-                var db = redis.GetDatabase();
-                var subscriber = redis.GetSubscriber();
-                var channel = RedisChannel.Literal("distribute_queue");
-                var subscribe = await subscriber.SubscribeAsync(channel);
-
-                subscribe.OnMessage(async message =>
-                {
-                    try
-                    {
-                        await ProcessMessageAsync(message.Message, db, redis, stoppingToken);
-                    }
-                    catch (Exception e)
-                    {
-                        Console.WriteLine($"[DistributeQueue] Error in callback: {e.Message}");
-                    }
-                });
-
-                await Task.Delay(Timeout.Infinite, stoppingToken);
+                var redis = scope.ServiceProvider.GetRequiredService<IConnectionMultiplexer>();
+                var consumer = new RedisStreamConsumer(redis, StreamNames.Distribute);
+                await consumer.ConsumeAsync(msg => ProcessMessageAsync(msg, stoppingToken), stoppingToken);
             }
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { }
             catch (Exception e)
             {
                 Console.WriteLine($"Error in distribute queue: {e.Message}");
@@ -59,21 +46,14 @@ public sealed class DistributeQueue : BackgroundService
         }
     }
 
-    private async Task ProcessMessageAsync(
-        RedisValue message,
-        IDatabase db,
-        IConnectionMultiplexer redis,
-        CancellationToken stoppingToken
-    )
+    private async Task ProcessMessageAsync(string message, CancellationToken stoppingToken)
     {
-        var taskRequestText = message.ToString();
-        if (string.IsNullOrEmpty(taskRequestText))
-        {
+        if (string.IsNullOrEmpty(message))
             return;
-        }
+
         try
         {
-            var taskRequest = JsonSerializer.Deserialize<TaskRequest>(taskRequestText);
+            var taskRequest = JsonSerializer.Deserialize<TaskRequest>(message);
             if (taskRequest != null)
             {
                 var (id, webSocket) =
@@ -86,7 +66,11 @@ public sealed class DistributeQueue : BackgroundService
 
                 taskRequest.PrivateArgs["node_id"] = id.ToString();
 
-                await db.StringSetAsync($"task:{taskRequest.Id}", taskRequestText);
+                using var scope = _serviceScopeFactory.CreateScope();
+                var redis = scope.ServiceProvider.GetRequiredService<IConnectionMultiplexer>();
+                var db = redis.GetDatabase();
+
+                await db.StringSetAsync($"task:{taskRequest.Id}", message, TimeSpan.FromMinutes(10));
 
                 await taskRequest.LoadInputIfNeeded();
 
@@ -108,11 +92,7 @@ public sealed class DistributeQueue : BackgroundService
                     stoppingToken
                 );
 
-                var subscriber = redis.GetSubscriber();
-
-                var channel = RedisChannel.Literal("session_tracking_queue");
-
-                await subscriber.PublishAsync(channel, taskRequest.Id.ToString());
+                await _publisher.PublishAsync(StreamNames.SessionTracking, taskRequest.Id.ToString());
             }
         }
         catch (Exception ex)
@@ -121,11 +101,9 @@ public sealed class DistributeQueue : BackgroundService
 
             try
             {
-                if (!string.IsNullOrEmpty(taskRequestText))
+                if (!string.IsNullOrEmpty(message))
                 {
-                    var taskRequest = JsonSerializer.Deserialize<TaskRequest>(
-                        taskRequestText
-                    );
+                    var taskRequest = JsonSerializer.Deserialize<TaskRequest>(message);
                     if (taskRequest != null)
                     {
                         using var errorScope = _serviceScopeFactory.CreateScope();

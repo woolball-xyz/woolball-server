@@ -3,6 +3,7 @@ using System.Text;
 using System.Text.Json;
 using Application.Logic;
 using Domain.Contracts;
+using Infrastructure.Redis;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -29,6 +30,7 @@ public static class TaskSockets
     public static async Task ReceiveAsync(
         HttpContext context,
         IConnectionMultiplexer redis,
+        IRedisStreamPublisher streamPublisher,
         WebSocketNodesQueue webSocketNodesQueue,
         CancellationToken cancellationToken,
         string id
@@ -50,8 +52,6 @@ public static class TaskSockets
 
         var buffer = new byte[1024 * 4];
         WebSocketReceiveResult result;
-
-        var publisher = redis.GetSubscriber();
 
         // Simplified ping mechanism
         _ = Task.Run(async () =>
@@ -117,8 +117,8 @@ public static class TaskSockets
                             Data = responseBody?.Data ?? new TaskResponseData<object>(),
                         };
 
-                        await publisher.PublishAsync(
-                            RedisChannel.Literal("post_processing_queue"),
+                        await streamPublisher.PublishAsync(
+                            StreamNames.PostProcessing,
                             JsonSerializer.Serialize(response)
                         );
                     }
