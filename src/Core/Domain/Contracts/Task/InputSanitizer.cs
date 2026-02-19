@@ -5,6 +5,80 @@ public static class InputSanitizer
 {
     public const long MaxFileSizeBytes = 100L * 1024 * 1024; // 100 MB
 
+    private static readonly byte[] RiffHeader = "RIFF"u8.ToArray();
+    private static readonly byte[] Id3Header = new byte[] { 0x49, 0x44, 0x33 }; // ID3 (MP3)
+    private static readonly byte[] Mp3SyncWord = new byte[] { 0xFF, 0xFB };
+    private static readonly byte[] Mp3SyncWordAlt = new byte[] { 0xFF, 0xF3 };
+    private static readonly byte[] Mp3SyncWordAlt2 = new byte[] { 0xFF, 0xF2 };
+    private static readonly byte[] OggHeader = "OggS"u8.ToArray();
+    private static readonly byte[] WebmHeader = new byte[] { 0x1A, 0x45, 0xDF, 0xA3 }; // EBML (WebM/MKV)
+    private static readonly byte[] FlacHeader = "fLaC"u8.ToArray();
+    private static readonly byte[] Mp4FtypOffset = "ftyp"u8.ToArray(); // at offset 4
+
+    private static readonly HashSet<string> AllowedBase64MimeTypes = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "audio/wav", "audio/wave", "audio/x-wav", "audio/x-pn-wav",
+        "audio/mpeg", "audio/mp3",
+        "audio/ogg",
+        "audio/webm",
+        "audio/flac",
+        "audio/mp4", "audio/m4a",
+        "video/mp4", "video/mpeg", "video/ogg", "video/webm",
+        "video/quicktime", "video/x-msvideo", "video/x-matroska",
+    };
+
+    public static void ValidateAudioMagicBytes(byte[] data)
+    {
+        if (data.Length < 4)
+            throw new InvalidOperationException("Data too small to be a valid audio file.");
+
+        if (StartsWith(data, RiffHeader)) return;       // WAV
+        if (StartsWith(data, Id3Header)) return;         // MP3 with ID3 tag
+        if (StartsWith(data, Mp3SyncWord)) return;       // MP3 sync frame
+        if (StartsWith(data, Mp3SyncWordAlt)) return;
+        if (StartsWith(data, Mp3SyncWordAlt2)) return;
+        if (StartsWith(data, OggHeader)) return;         // OGG/Vorbis/Opus
+        if (StartsWith(data, WebmHeader)) return;        // WebM/MKV (EBML)
+        if (StartsWith(data, FlacHeader)) return;        // FLAC
+
+        // MP4/M4A: bytes 4-7 == "ftyp"
+        if (data.Length >= 8 && data[4] == Mp4FtypOffset[0] && data[5] == Mp4FtypOffset[1]
+            && data[6] == Mp4FtypOffset[2] && data[7] == Mp4FtypOffset[3])
+            return;
+
+        throw new InvalidOperationException("Decoded data does not have a recognized audio/video file signature.");
+    }
+
+    public static string? ParseAndValidateDataUrlMimeType(string dataUrl)
+    {
+        // Expected format: data:<mime>;base64,<data>
+        if (!dataUrl.StartsWith("data:"))
+            return null;
+
+        var semicolonIndex = dataUrl.IndexOf(';');
+        if (semicolonIndex <= 5) // "data:" is 5 chars
+            return null;
+
+        var mimeType = dataUrl.Substring(5, semicolonIndex - 5);
+        if (!AllowedBase64MimeTypes.Contains(mimeType))
+        {
+            throw new InvalidOperationException(
+                $"MIME type '{mimeType}' is not an allowed audio/video format.");
+        }
+
+        return mimeType;
+    }
+
+    private static bool StartsWith(byte[] data, byte[] prefix)
+    {
+        if (data.Length < prefix.Length) return false;
+        for (int i = 0; i < prefix.Length; i++)
+        {
+            if (data[i] != prefix[i]) return false;
+        }
+        return true;
+    }
+
     public static string SanitizeFileName(string fileName)
     {
         return Path.GetFileName(fileName);

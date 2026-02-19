@@ -24,7 +24,8 @@ builder.Services.Configure<Microsoft.AspNetCore.Http.Features.FormOptions>(optio
     options.MultipartBodyLengthLimit = 100 * 1024 * 1024;
 });
 
-// add cors
+// add cors — AllowAnyOrigin without AllowCredentials prevents CSRF
+// (browsers won't send cookies/auth headers on cross-origin requests)
 builder.Services.AddCors(options =>
 {
     options.AddPolicy(
@@ -34,8 +35,7 @@ builder.Services.AddCors(options =>
             builder
                 .AllowAnyMethod()
                 .AllowAnyHeader()
-                .SetIsOriginAllowed(_ => true)
-                .AllowCredentials();
+                .AllowAnyOrigin();
         }
     );
 });

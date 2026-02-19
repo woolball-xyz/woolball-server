@@ -25,7 +25,7 @@ public sealed class TaskBusinessLogic(IConnectionMultiplexer redis) : ITaskBusin
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Error emitting error for task {taskRequestId}: {ex.Message}");
+            Console.WriteLine($"Error emitting error for task: {ex.GetType().Name}");
             return false;
         }
     }
@@ -81,7 +81,7 @@ public sealed class TaskBusinessLogic(IConnectionMultiplexer redis) : ITaskBusin
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Error publishing to text split queue: {ex.Message}");
+            Console.WriteLine($"Error publishing to text split queue: {ex.GetType().Name}");
             return false;
         }
     }
@@ -100,7 +100,7 @@ public sealed class TaskBusinessLogic(IConnectionMultiplexer redis) : ITaskBusin
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Error publishing to distribution queue: {ex.Message}");
+            Console.WriteLine($"Error publishing to distribution queue: {ex.GetType().Name}");
             return false;
         }
     }
@@ -114,9 +114,7 @@ public sealed class TaskBusinessLogic(IConnectionMultiplexer redis) : ITaskBusin
 
             var channel = await subscriber.SubscribeAsync(RedisChannel.Literal(queueName));
 
-            Console.WriteLine($"[AwaitTaskResultAsync] listening: {queueName}");
             var result = await channel.ReadAsync();
-            Console.WriteLine($"[AwaitTaskResultAsync] Message received: {result.Message}");
             await channel.UnsubscribeAsync();
             return result.Message.ToString();
         }
@@ -136,7 +134,6 @@ public sealed class TaskBusinessLogic(IConnectionMultiplexer redis) : ITaskBusin
 
         var channel = await subscriber.SubscribeAsync(RedisChannel.Literal(queueName));
 
-        Console.WriteLine($"[StreamTaskResultAsync] listening: {queueName}");
         while (!cancellationToken.IsCancellationRequested)
         {
             var message = await channel.ReadAsync(cancellationToken);
@@ -144,15 +141,11 @@ public sealed class TaskBusinessLogic(IConnectionMultiplexer redis) : ITaskBusin
                 continue;
 
             string messageText = message.Message.ToString();
-            Console.WriteLine($"[StreamTaskResultAsync] Message received: {messageText}");
 
             if (
                 messageText.Contains("\"Status\":\"Completed\"", StringComparison.OrdinalIgnoreCase)
             )
             {
-                Console.WriteLine(
-                    $"[StreamTaskResultAsync] Detected completion message, breaking stream"
-                );
                 break;
             }
 

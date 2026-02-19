@@ -14,13 +14,16 @@ namespace Presentation.Websockets;
 
 public static class TaskSockets
 {
+    private const int MaxMessageSize = 10 * 1024 * 1024; // 10 MB per message
+
     public static void AddTaskSockets(this IEndpointRouteBuilder app)
     {
         var group = app.MapGroup("ws/");
 
         group.WithOpenApi();
 
-        group.Map("{id}", ReceiveAsync);
+        group.Map("{id}", ReceiveAsync)
+            .RequireRateLimiting("ws-fixed");
     }
 
     public static async Task ReceiveAsync(
@@ -77,15 +80,27 @@ public static class TaskSockets
         {
             do
             {
-                string data = string.Empty;
+                var sb = new StringBuilder();
                 do
                 {
                     result = await webSocket.ReceiveAsync(
                         new ArraySegment<byte>(buffer),
                         cancellationToken
                     );
-                    data += Encoding.UTF8.GetString(buffer, 0, result.Count);
+                    sb.Append(Encoding.UTF8.GetString(buffer, 0, result.Count));
+
+                    if (sb.Length > MaxMessageSize)
+                    {
+                        await webSocket.CloseAsync(
+                            WebSocketCloseStatus.MessageTooBig,
+                            "Message exceeds maximum allowed size",
+                            cancellationToken
+                        );
+                        return;
+                    }
                 } while (!result.EndOfMessage);
+
+                var data = sb.ToString();
 
                 if (!string.IsNullOrEmpty(data))
                 {
@@ -109,9 +124,8 @@ public static class TaskSockets
                     }
                     catch (Exception ex)
                     {
-                        // should redistribute
                         Console.WriteLine(
-                            $"[ReceiveAsync] Error processing task response: {ex.Message}"
+                            $"[ReceiveAsync] Error processing task response: {ex.GetType().Name}"
                         );
                     }
                 }

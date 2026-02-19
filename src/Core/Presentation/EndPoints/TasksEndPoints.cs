@@ -127,7 +127,7 @@ public static class TasksEndPoints
         }
         catch (Exception e)
         {
-            Console.WriteLine(e);
+            Console.WriteLine($"Request error: {e.GetType().Name}");
             context.Response.StatusCode = 500;
             await context.Response.WriteAsync(
                 JsonSerializer.Serialize(new { error = "internal error" }),
@@ -152,7 +152,7 @@ public static class TasksEndPoints
         }
         catch (Exception e)
         {
-            Console.WriteLine(e);
+            Console.WriteLine($"Request error: {e.GetType().Name}");
             context.Response.StatusCode = 500;
             await context.Response.WriteAsync(
                 JsonSerializer.Serialize(new { error = "internal error" }),

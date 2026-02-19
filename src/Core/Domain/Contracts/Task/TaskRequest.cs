@@ -150,7 +150,6 @@ public class SpeechToTextTaskHandler : ITaskHandler
                 }
                 catch (HttpRequestException ex)
                 {
-                    Console.WriteLine($"Error downloading audio from URL: {ex.Message}");
                     throw new InvalidOperationException("Failed to download audio from URL", ex);
                 }
             }
@@ -160,9 +159,10 @@ public class SpeechToTextTaskHandler : ITaskHandler
                 try
                 {
                     var base64Data = inputValue;
-                    // Remove data URL prefix if present
+                    // Remove data URL prefix if present, validating MIME type
                     if (base64Data.StartsWith("data:"))
                     {
+                        InputSanitizer.ParseAndValidateDataUrlMimeType(base64Data);
                         var commaIndex = base64Data.IndexOf(',');
                         if (commaIndex > 0)
                         {
@@ -172,6 +172,7 @@ public class SpeechToTextTaskHandler : ITaskHandler
 
                     var audioBytes = Convert.FromBase64String(base64Data);
                     InputSanitizer.ValidateFileSize(audioBytes.Length);
+                    InputSanitizer.ValidateAudioMagicBytes(audioBytes);
                     var fileName = Path.Combine(directoryPath, $"{Guid.NewGuid()}.wav");
                     await File.WriteAllBytesAsync(fileName, audioBytes);
                     request.Kwargs["input"] = fileName;
