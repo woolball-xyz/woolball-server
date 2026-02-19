@@ -7,7 +7,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using StackExchange.Redis;
 
-namespace Background;
+namespace Presentation.Queues;
 
 public sealed class PostProcessingQueue(IServiceScopeFactory serviceScopeFactory)
     : BackgroundService
@@ -86,6 +86,19 @@ public sealed class PostProcessingQueue(IServiceScopeFactory serviceScopeFactory
                         try
                         {
                             await ProcessTaskResponseAsync(taskResponse, taskRequest);
+
+                            var completionData = JsonSerializer.Serialize(
+                                new TaskCompletionData
+                                {
+                                    TaskRequestId = taskRequest.Id,
+                                    Status = "completed"
+                                }
+                            );
+                            await subscriber.PublishAsync(
+                                RedisChannel.Literal("task_completion"),
+                                completionData
+                            );
+                            await db.KeyDeleteAsync($"task:{taskRequest.Id}");
                         }
                         catch (Exception ex)
                         {
@@ -155,8 +168,9 @@ public sealed class PostProcessingQueue(IServiceScopeFactory serviceScopeFactory
                                 Console.WriteLine(
                                     $"Max retry attempts reached for task {taskRequest.Id}. Error: {ex.Message}"
                                 );
+                                using var errorScope = serviceScopeFactory.CreateScope();
                                 var logic =
-                                    scope.ServiceProvider.GetRequiredService<ITaskBusinessLogic>();
+                                    errorScope.ServiceProvider.GetRequiredService<ITaskBusinessLogic>();
                                 await logic.EmitTaskRequestErrorAsync(taskId);
                             }
                         }
@@ -166,8 +180,9 @@ public sealed class PostProcessingQueue(IServiceScopeFactory serviceScopeFactory
                         Console.WriteLine($"Error in postprocessing queue: {e.Message}");
                         if (taskId != null)
                         {
+                            using var errorScope = serviceScopeFactory.CreateScope();
                             var logic =
-                                scope.ServiceProvider.GetRequiredService<ITaskBusinessLogic>();
+                                errorScope.ServiceProvider.GetRequiredService<ITaskBusinessLogic>();
                             await logic.EmitTaskRequestErrorAsync(taskId);
                         }
                     }

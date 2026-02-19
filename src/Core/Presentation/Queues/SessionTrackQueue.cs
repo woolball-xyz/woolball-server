@@ -1,18 +1,16 @@
 using System.Collections.Concurrent;
 using System.Text.Json;
-using Application.Logic;
 using Domain.Contracts;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using StackExchange.Redis;
 
-namespace Background;
+namespace Presentation.Queues;
 
 public sealed class SessionTrackQueue(IServiceScopeFactory serviceScopeFactory) : BackgroundService
 {
     private readonly ConcurrentDictionary<Guid, CancellationTokenSource> _taskTimers = new();
 
-    private readonly ConcurrentDictionary<Guid, int> _taskAttempts = new();
     private const int TASK_TIMEOUT_MS = 120000; // 2 minutes
     private const int MAX_RETRY_ATTEMPTS = 3;
 
@@ -29,7 +27,7 @@ public sealed class SessionTrackQueue(IServiceScopeFactory serviceScopeFactory) 
                 var subscriber = redis.GetSubscriber();
 
                 var sessionTrackChannel = await subscriber.SubscribeAsync(
-                    RedisChannel.Literal("sesion_tracking_queue")
+                    RedisChannel.Literal("session_tracking_queue")
                 );
 
                 var taskCompletionChannel = await subscriber.SubscribeAsync(
@@ -44,11 +42,10 @@ public sealed class SessionTrackQueue(IServiceScopeFactory serviceScopeFactory) 
                         if (string.IsNullOrEmpty(messageStr))
                             return;
 
-                        var taskRequest = JsonSerializer.Deserialize<TaskRequest>(messageStr);
-                        if (taskRequest == null)
+                        if (!Guid.TryParse(messageStr, out var taskId))
                             return;
 
-                        StartTaskTracking(taskRequest.Id, db, subscriber);
+                        StartTaskTracking(taskId, db, subscriber);
                     }
                     catch (Exception ex)
                     {
@@ -95,7 +92,12 @@ public sealed class SessionTrackQueue(IServiceScopeFactory serviceScopeFactory) 
     private void StartTaskTracking(Guid taskId, IDatabase db, ISubscriber subscriber)
     {
         var cts = new CancellationTokenSource();
-        _taskTimers.TryAdd(taskId, cts);
+        _taskTimers.AddOrUpdate(taskId, cts, (key, oldCts) =>
+        {
+            oldCts.Cancel();
+            oldCts.Dispose();
+            return cts;
+        });
 
         Task.Run(async () =>
         {
@@ -104,37 +106,74 @@ public sealed class SessionTrackQueue(IServiceScopeFactory serviceScopeFactory) 
                 await Task.Delay(TASK_TIMEOUT_MS, cts.Token);
 
                 var taskData = await db.StringGetAsync($"task:{taskId}");
-                if (!taskData.IsNullOrEmpty)
+                if (taskData.IsNullOrEmpty)
+                    return;
+
+                var taskRequest = JsonSerializer.Deserialize<TaskRequest>(taskData.ToString());
+                if (taskRequest == null)
+                    return;
+
+                int retryCount = 0;
+                if (taskRequest.PrivateArgs.TryGetValue("retry_count", out var retryValue))
                 {
-                    int attempts = _taskAttempts.GetOrAdd(taskId, 1);
-
-                    if (attempts < MAX_RETRY_ATTEMPTS)
+                    if (retryValue is int intValue)
                     {
-                        await subscriber.PublishAsync(
-                            RedisChannel.Literal("distribute_queue"),
-                            taskData
-                        );
-                        Console.WriteLine(
-                            $"Task {taskId} redistributed due to timeout (attempt {attempts} of {MAX_RETRY_ATTEMPTS})"
-                        );
+                        retryCount = intValue;
                     }
-                    else
+                    else if (retryValue is JsonElement jsonElement)
                     {
-                        Console.WriteLine(
-                            $"Task {taskId} failed after {MAX_RETRY_ATTEMPTS} attempts"
-                        );
-
-                        _taskAttempts.TryRemove(taskId, out _);
-
-                        var failureMessage = JsonSerializer.Serialize(
-                            new TaskCompletionData { TaskRequestId = taskId, Status = "failed" }
-                        );
-
-                        await subscriber.PublishAsync(
-                            RedisChannel.Literal($"result_queue_{taskId}"),
-                            failureMessage
-                        );
+                        if (jsonElement.ValueKind == JsonValueKind.Number)
+                        {
+                            retryCount = jsonElement.GetInt32();
+                        }
+                        else if (
+                            jsonElement.ValueKind == JsonValueKind.String
+                            && int.TryParse(jsonElement.GetString(), out var parsedValue)
+                        )
+                        {
+                            retryCount = parsedValue;
+                        }
                     }
+                    else if (retryValue != null)
+                    {
+                        if (int.TryParse(retryValue.ToString(), out var parsedValue))
+                        {
+                            retryCount = parsedValue;
+                        }
+                    }
+                }
+
+                if (retryCount < MAX_RETRY_ATTEMPTS)
+                {
+                    taskRequest.PrivateArgs["retry_count"] = retryCount + 1;
+
+                    var updatedTaskData = JsonSerializer.Serialize(taskRequest);
+                    await db.StringSetAsync($"task:{taskId}", updatedTaskData);
+
+                    await subscriber.PublishAsync(
+                        RedisChannel.Literal("distribute_queue"),
+                        updatedTaskData
+                    );
+                    Console.WriteLine(
+                        $"Task {taskId} redistributed due to timeout (attempt {retryCount + 1} of {MAX_RETRY_ATTEMPTS})"
+                    );
+                }
+                else
+                {
+                    Console.WriteLine(
+                        $"Task {taskId} failed after {MAX_RETRY_ATTEMPTS} attempts"
+                    );
+
+                    await db.KeyDeleteAsync($"task:{taskId}");
+
+                    var failureMessage = JsonSerializer.Serialize(
+                        new TaskCompletionData { TaskRequestId = taskId, Status = "failed" }
+                    );
+
+                    await subscriber.PublishAsync(
+                        RedisChannel.Literal($"result_queue_{taskId}"),
+                        failureMessage
+                    );
                 }
             }
             catch (OperationCanceledException) { }
@@ -152,8 +191,6 @@ public sealed class SessionTrackQueue(IServiceScopeFactory serviceScopeFactory) 
             cts.Cancel();
             cts.Dispose();
             Console.WriteLine($"Task {taskId} tracking canceled - task completed successfully");
-
-            _taskAttempts.TryRemove(taskId, out _);
         }
     }
 }

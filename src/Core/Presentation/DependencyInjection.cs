@@ -1,5 +1,5 @@
 ﻿using System.Globalization;
-using Background;
+using Presentation.Queues;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Routing;
@@ -18,6 +18,7 @@ public static class DependencyInjection
         services.AddHostedService<SplitAudioBySilenceQueue>();
         services.AddHostedService<SplitTextQueue>();
         services.AddHostedService<PostProcessingQueue>();
+        services.AddHostedService<SessionTrackQueue>();
         return services;
     }
 
