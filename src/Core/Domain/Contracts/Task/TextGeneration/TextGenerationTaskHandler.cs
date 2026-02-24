@@ -19,6 +19,7 @@ public class TextGenerationTaskHandler : ITaskHandler
                 "HuggingFaceTB/SmolLM2-360M-Instruct",
                 "Mozilla/Qwen2.5-0.5B-Instruct",
                 "onnx-community/Qwen2.5-Coder-0.5B-Instruct",
+                "HuggingFaceTB/SmolLM3-3B-Instruct",
                 // WebLLM
                 "DeepSeek-R1-Distill-Qwen-7B-q4f16_1-MLC",
                 "DeepSeek-R1-Distill-Llama-8B-q4f16_1-MLC",

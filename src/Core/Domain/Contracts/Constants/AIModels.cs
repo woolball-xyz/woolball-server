@@ -6,6 +6,7 @@ public static class AvailableModels
     public static readonly string SpeechToText = "automatic-speech-recognition";
     public static readonly string TextToSpeech = "text-to-speech";
     public static readonly string Translation = "translation";
+    public static readonly string ImageTextToText = "image-text-to-text";
 
     private static readonly List<string> _dict = new List<string>
     {
@@ -13,6 +14,7 @@ public static class AvailableModels
         TextToSpeech,
         Translation,
         TextGeneration,
+        ImageTextToText,
     };
 
     // Dictionary for mapping aliases to official task types
@@ -30,6 +32,8 @@ public static class AvailableModels
         { "tts", TextToSpeech },
         // Aliases for text-generation
         { "completions", TextGeneration },
+        // Aliases for image-text-to-text
+        { "vision", ImageTextToText },
     };
 
     public static string GetTaskName(string task)

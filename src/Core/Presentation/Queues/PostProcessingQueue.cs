@@ -95,9 +95,7 @@ public sealed class PostProcessingQueue(
             {
                 await ProcessTaskResponseAsync(taskResponse, taskRequest);
 
-                var completionId = taskRequest.PrivateArgs.ContainsKey("parent")
-                    ? Guid.Parse(taskRequest.PrivateArgs["parent"].ToString()!)
-                    : taskRequest.Id;
+                var completionId = taskRequest.Id;
                 var completionData = JsonSerializer.Serialize(
                     new TaskCompletionData
                     {
@@ -188,6 +186,12 @@ public sealed class PostProcessingQueue(
                 var textGenerationLogic =
                     scope.ServiceProvider.GetRequiredService<ITextGenerationLogic>();
                 await textGenerationLogic.ProcessTaskResponseAsync(taskResponse, taskRequest);
+                break;
+
+            case var task when task == AvailableModels.ImageTextToText:
+                var imageTextToTextLogic =
+                    scope.ServiceProvider.GetRequiredService<IImageTextToTextLogic>();
+                await imageTextToTextLogic.ProcessTaskResponseAsync(taskResponse, taskRequest);
                 break;
 
             default:

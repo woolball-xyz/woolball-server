@@ -6,6 +6,7 @@ using Domain.Contracts.Task.TextGeneration;
 using Domain.Contracts.Task.SpeechToText;
 using Domain.Contracts.Task.TextToSpeech;
 using Domain.Contracts.Task.Translation;
+using Domain.Contracts.Task.ImageTextToText;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -85,6 +86,22 @@ public static class TasksEndPoints
                 Tags = new List<OpenApiTag> { new() { Name = "Text Generation" } }
             });
 
+        // Image-Text-to-Text endpoint
+        group.MapPost("image-text-to-text", HandleImageTextToTextFromForm)
+            .WithName("ImageTextToText")
+            .WithSummary("Describe or answer questions about images")
+            .WithDescription("Multimodal vision: send an image and a text prompt to get a text response. Input is a JSON string with image (base64) and text fields.")
+            .Accepts<ImageTextToTextRequestContract>("multipart/form-data")
+            .Produces<TextGenerationResponse>(200)
+            .Produces<object>(400)
+            .RequireRateLimiting("fixed")
+            .WithOpenApi(operation => new OpenApiOperation(operation)
+            {
+                Summary = "Image-Text-to-Text (Vision)",
+                Description = "Send an image and a text prompt to get a text answer. Input should be a JSON string: {\"image\":\"base64...\",\"text\":\"question\"}.",
+                Tags = new List<OpenApiTag> { new() { Name = "Image-Text-to-Text" } }
+            });
+
     }
 
     private static async Task HandleSpeechToText(
@@ -122,8 +139,15 @@ public static class TasksEndPoints
     {
         await HandleTaskInternalFromForm("text-generation", context, logic, cancellationToken);
     }
-    
 
+    private static async Task HandleImageTextToTextFromForm(
+        HttpContext context,
+        [FromServices] ITaskBusinessLogic logic,
+        CancellationToken cancellationToken
+    )
+    {
+        await HandleTaskInternalFromForm("image-text-to-text", context, logic, cancellationToken);
+    }
 
     private static async Task HandleTaskInternalFromForm(
         string task,
@@ -157,7 +181,8 @@ public static class TasksEndPoints
         }
         catch (Exception e)
         {
-            Console.WriteLine($"Request error: {e.GetType().Name}");
+            Console.WriteLine($"Request error: {e.GetType().Name}: {e.Message}");
+            Console.WriteLine(e.StackTrace);
             context.Response.StatusCode = 500;
             context.Response.ContentType = "application/json";
             await context.Response.WriteAsync(
@@ -217,7 +242,6 @@ public static class TasksEndPoints
         {
             context.Response.ContentType = "application/x-ndjson";
             context.Response.Headers["Cache-Control"] = "no-cache";
-            context.Response.Headers["Transfer-Encoding"] = "chunked";
 
             await foreach (
                 var message in logic.StreamTaskResultAsync(request, cancellationToken)

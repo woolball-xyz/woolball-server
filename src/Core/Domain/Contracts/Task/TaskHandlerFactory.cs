@@ -14,6 +14,7 @@ public static class TaskHandlerFactory
             { AvailableModels.TextToSpeech, new TextToSpeechTaskHandler() },
             { AvailableModels.Translation, new TranslationTaskHandler() },
             { AvailableModels.TextGeneration, new TextGenerationTaskHandler() },
+            { AvailableModels.ImageTextToText, new ImageTextToTextTaskHandler() },
         };
 
     public static ITaskHandler GetHandler(string taskType)

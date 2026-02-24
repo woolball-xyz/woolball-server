@@ -102,11 +102,7 @@ public sealed class DistributeQueue : BackgroundService
                     stoppingToken
                 );
 
-                // Publish the parent ID for session tracking if this is a sub-task
-                var trackingId = taskRequest.PrivateArgs.ContainsKey("parent")
-                    ? taskRequest.PrivateArgs["parent"].ToString()
-                    : taskRequest.Id.ToString();
-                await _publisher.PublishAsync(StreamNames.SessionTracking, trackingId);
+                await _publisher.PublishAsync(StreamNames.SessionTracking, taskRequest.Id.ToString());
             }
         }
         catch (Exception ex)

@@ -59,7 +59,7 @@ public static class SpeechToTextFormProcessor
                     if (contentType != null && AudioValidation.ValidateMediaType(contentType))
                     {
                         var fileExtension = ".wav"; // Default extension
-                        if (contentType.Contains("mp3")) fileExtension = ".mp3";
+                        if (contentType.Contains("mp3") || contentType.Contains("mpeg")) fileExtension = ".mp3";
                         else if (contentType.Contains("ogg")) fileExtension = ".ogg";
                         else if (contentType.Contains("webm")) fileExtension = ".webm";
 

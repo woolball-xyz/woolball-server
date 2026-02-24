@@ -74,7 +74,8 @@ public sealed class PreProcessingQueue(
 
                 case var task
                     when task == AvailableModels.Translation
-                        || task == AvailableModels.TextGeneration:
+                        || task == AvailableModels.TextGeneration
+                        || task == AvailableModels.ImageTextToText:
                     // These tasks don't need preprocessing, send directly to distribution
                     await logic.PublishDistributeQueueAsync(taskRequest);
                     break;
