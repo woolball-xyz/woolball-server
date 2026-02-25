@@ -33,7 +33,7 @@ public abstract class BaseTextGenerationRequest
     public int? TopK { get; set; }
 
     /// <summary>
-    /// If set to float < 1, only the smallest set of most probable tokens with probabilities that add up to top_p or higher are kept for generation
+    /// If set to float &lt; 1, only the smallest set of most probable tokens with probabilities that add up to top_p or higher are kept for generation
     /// </summary>
     [JsonPropertyName("top_p")]
     public double? TopP { get; set; }

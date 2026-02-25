@@ -135,6 +135,13 @@ Deploy Woolball to DigitalOcean App Platform with a single click:
 
 ## 📖 API Reference
 
+### Auto-generated OpenAPI Docs
+
+When the API is running, interactive docs are available at:
+
+- Swagger UI: `http://localhost:9002/swagger`
+- OpenAPI JSON: `http://localhost:9002/swagger/v1/swagger.json`
+
 ### 📖 Text Generation
 
 <details>

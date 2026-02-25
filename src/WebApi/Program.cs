@@ -53,6 +53,13 @@ For detailed examples and model lists, visit our [GitHub repository](https://git
 
     c.EnableAnnotations();
     c.DescribeAllParametersInCamelCase();
+
+    // Load XML docs from this app and referenced projects to auto-generate richer OpenAPI docs.
+    var xmlFiles = Directory.GetFiles(AppContext.BaseDirectory, "*.xml", SearchOption.TopDirectoryOnly);
+    foreach (var xmlFile in xmlFiles)
+    {
+        c.IncludeXmlComments(xmlFile, includeControllerXmlComments: true);
+    }
     
     // Enable polymorphism support for System.Text.Json with custom filters
     c.UseOneOfForPolymorphism();
