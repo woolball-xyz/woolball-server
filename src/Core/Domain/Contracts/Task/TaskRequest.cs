@@ -3,6 +3,7 @@ using System.IO;
 using System.Net.Http;
 using System.Threading.Tasks;
 using Contracts.Constants;
+using Domain.Utilities;
 using Microsoft.AspNetCore.Http;
 
 public class FieldsConfig
@@ -83,11 +84,7 @@ public class SpeechToTextTaskHandler : ITaskHandler
     public async Task ProcessInput(TaskRequest request, IFormCollection form)
     {
         // Ensure the temp directory exists
-        var directoryPath = "./shared/temp/";
-        if (!Directory.Exists(directoryPath))
-        {
-            Directory.CreateDirectory(directoryPath);
-        }
+        var directoryPath = FileUtils.GetOutputDir();
 
         // Try to get the file from the form
         IFormFile file = null;
@@ -103,7 +100,7 @@ public class SpeechToTextTaskHandler : ITaskHandler
         // Process file if it exists
         if (file != null && file.Length > 0)
         {
-            var fileName = $"{directoryPath}{Guid.NewGuid()}_{file.FileName}";
+            var fileName = Path.Combine(directoryPath, $"{Guid.NewGuid()}_{file.FileName}");
             using var stream = new FileStream(fileName, FileMode.Create);
             await file.CopyToAsync(stream);
             request.Kwargs["input"] = fileName;
@@ -132,7 +129,7 @@ public class SpeechToTextTaskHandler : ITaskHandler
                         else if (contentType.Contains("ogg")) fileExtension = ".ogg";
                         else if (contentType.Contains("webm")) fileExtension = ".webm";
                         
-                        var fileName = $"{directoryPath}{Guid.NewGuid()}{fileExtension}";
+                        var fileName = Path.Combine(directoryPath, $"{Guid.NewGuid()}{fileExtension}");
                         var audioBytes = await response.Content.ReadAsByteArrayAsync();
                         await File.WriteAllBytesAsync(fileName, audioBytes);
                         request.Kwargs["input"] = fileName;
@@ -165,14 +162,14 @@ public class SpeechToTextTaskHandler : ITaskHandler
                     }
                     
                     var audioBytes = Convert.FromBase64String(base64Data);
-                    var fileName = $"{directoryPath}{Guid.NewGuid()}.wav"; // Assume WAV for base64
+                    var fileName = Path.Combine(directoryPath, $"{Guid.NewGuid()}.wav"); // Assume WAV for base64
                     await File.WriteAllBytesAsync(fileName, audioBytes);
                     request.Kwargs["input"] = fileName;
                 }
                 catch (FormatException)
                 {
                     // Not valid base64, treat as text input
-                    var fileName = $"{directoryPath}{Guid.NewGuid()}_empty.wav";
+                    var fileName = Path.Combine(directoryPath, $"{Guid.NewGuid()}_empty.wav");
                     File.WriteAllBytes(fileName, new byte[44]); // Empty WAV header
                     request.Kwargs["input"] = fileName;
                 }
@@ -180,7 +177,7 @@ public class SpeechToTextTaskHandler : ITaskHandler
             else
             {
                 // Create placeholder if no valid input
-                var fileName = $"{directoryPath}{Guid.NewGuid()}_empty.wav";
+                var fileName = Path.Combine(directoryPath, $"{Guid.NewGuid()}_empty.wav");
                 File.WriteAllBytes(fileName, new byte[44]); // Empty WAV header
                 request.Kwargs["input"] = fileName;
             }
@@ -188,7 +185,7 @@ public class SpeechToTextTaskHandler : ITaskHandler
         // Create placeholder if no valid input
         else
         {
-            var fileName = $"{directoryPath}{Guid.NewGuid()}_empty.wav";
+            var fileName = Path.Combine(directoryPath, $"{Guid.NewGuid()}_empty.wav");
             File.WriteAllBytes(fileName, new byte[44]); // Empty WAV header
             request.Kwargs["input"] = fileName;
         }
