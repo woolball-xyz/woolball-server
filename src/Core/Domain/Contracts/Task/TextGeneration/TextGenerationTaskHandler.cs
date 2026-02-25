@@ -19,7 +19,6 @@ public class TextGenerationTaskHandler : ITaskHandler
                 "HuggingFaceTB/SmolLM2-360M-Instruct",
                 "Mozilla/Qwen2.5-0.5B-Instruct",
                 "onnx-community/Qwen2.5-Coder-0.5B-Instruct",
-                "HuggingFaceTB/SmolLM3-3B-Instruct",
                 // WebLLM
                 "DeepSeek-R1-Distill-Qwen-7B-q4f16_1-MLC",
                 "DeepSeek-R1-Distill-Llama-8B-q4f16_1-MLC",
@@ -29,7 +28,7 @@ public class TextGenerationTaskHandler : ITaskHandler
                 // MediaPipe
                 "https://woolball.sfo3.cdn.digitaloceanspaces.com/gemma2-2b-it-cpu-int8.task",
                 "https://woolball.sfo3.cdn.digitaloceanspaces.com/gemma2-2b-it-gpu-int8.bin",
-                "https://woolball.sfo3.cdn.digitaloceanspaces.com/gemma3-1b-it-int4.task",
+                "https://woolball.sfo3.cdn.digitaloceanspaces.com/gemma3-1b-it-int4-web.task",
                 "https://woolball.sfo3.cdn.digitaloceanspaces.com/gemma3-4b-it-int4-web.task",
             },
             AllowedDtypes = new HashSet<string>(StringComparer.OrdinalIgnoreCase)

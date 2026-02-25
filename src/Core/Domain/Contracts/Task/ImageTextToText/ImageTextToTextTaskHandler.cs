@@ -14,7 +14,6 @@ public class ImageTextToTextTaskHandler : ITaskHandler
             OptionalFields = new List<string> { "model", "dtype", "max_new_tokens", "do_sample" },
             AllowedModels = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
             {
-                "HuggingFaceTB/SmolVLM2-256M-Instruct",
                 "HuggingFaceTB/SmolVLM-256M-Instruct",
             },
             AllowedDtypes = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
