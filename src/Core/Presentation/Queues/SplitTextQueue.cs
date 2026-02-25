@@ -1,13 +1,17 @@
 using System.Text.Json;
 using Application.Logic;
 using Contracts.Constants;
+using Infrastructure.Redis;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using StackExchange.Redis;
 
-namespace Background;
+namespace Presentation.Queues;
 
-public sealed class SplitTextQueue(IServiceScopeFactory serviceScopeFactory) : BackgroundService
+public sealed class SplitTextQueue(
+    IServiceScopeFactory serviceScopeFactory,
+    IConnectionMultiplexer redis
+) : BackgroundService
 {
     private const int MaxChunkSize = 100;
 
@@ -17,86 +21,63 @@ public sealed class SplitTextQueue(IServiceScopeFactory serviceScopeFactory) : B
         {
             try
             {
-                await ProcessQueueAsync();
-
-                // Keep the connection alive
-                await Task.Delay(Timeout.Infinite, stoppingToken);
+                var consumer = new RedisStreamConsumer(redis, StreamNames.SplitText);
+                await consumer.ConsumeAsync(ProcessMessageAsync, stoppingToken);
             }
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { }
             catch (Exception e)
             {
                 Console.WriteLine($"Error in split text queue: {e.Message}");
-                // Add delay before retry
                 await Task.Delay(5000, stoppingToken);
             }
         }
     }
 
-    private async Task ProcessQueueAsync()
+    private async Task ProcessMessageAsync(string message)
     {
         using var scope = serviceScopeFactory.CreateScope();
-        IConnectionMultiplexer redis =
-            scope.ServiceProvider.GetRequiredService<IConnectionMultiplexer>();
-
-        var subscriber = redis.GetSubscriber();
-
-        var consumer = await subscriber.SubscribeAsync(RedisChannel.Literal("split_text_queue"));
-
-        consumer.OnMessage(
-            async (message) =>
-            {
-                try
-                {
-                    await ProcessMessageAsync(message.Message);
-                }
-                catch (Exception e)
-                {
-                    Console.WriteLine($"Error in split text queue: {e.Message}");
-                }
-            }
-        );
-    }
-
-    private async Task ProcessMessageAsync(RedisValue message)
-    {
-        using var scope = serviceScopeFactory.CreateScope();
-        IConnectionMultiplexer redis =
-            scope.ServiceProvider.GetRequiredService<IConnectionMultiplexer>();
-
         var logic = scope.ServiceProvider.GetRequiredService<ITaskBusinessLogic>();
 
-        string? messageStr = message.ToString();
         var request =
-            messageStr != null
-                ? System.Text.Json.JsonSerializer.Deserialize<TaskRequest>(messageStr)
+            !string.IsNullOrEmpty(message)
+                ? JsonSerializer.Deserialize<TaskRequest>(message)
                 : null;
         if (request == null)
             return;
 
-        // Extract input text, handling different possible input types
-        string text = ExtractTextInput(request);
-
-        if (string.IsNullOrEmpty(text))
+        try
         {
-            throw new InvalidOperationException(
-                "Missing or invalid input for text processing task"
-            );
+            // Extract input text, handling different possible input types
+            string text = ExtractTextInput(request);
+
+            if (string.IsNullOrEmpty(text))
+            {
+                throw new InvalidOperationException(
+                    "Missing or invalid input for text processing task"
+                );
+            }
+
+            if (text.Length <= MaxChunkSize)
+            {
+                await logic.PublishDistributeQueueAsync(request);
+                return;
+            }
+
+            var parent = request.Id.ToString();
+            await foreach (var segment in BreakTextIntoChunks(text))
+            {
+                request.Kwargs["input"] = segment.Text;
+                request.PrivateArgs["parent"] = parent;
+                request.PrivateArgs["order"] = segment.Order.ToString();
+                request.PrivateArgs["last"] = segment.IsLast.ToString();
+                request.Id = Guid.NewGuid();
+                await logic.PublishDistributeQueueAsync(request);
+            }
         }
-
-        if (text.Length <= MaxChunkSize)
+        catch (Exception e)
         {
-            await logic.PublishDistributeQueueAsync(request);
-            return;
-        }
-
-        var parent = request.Id.ToString();
-        await foreach (var segment in BreakTextIntoChunks(text))
-        {
-            request.Kwargs["input"] = segment.Text;
-            request.PrivateArgs["parent"] = parent;
-            request.PrivateArgs["order"] = segment.Order.ToString();
-            request.PrivateArgs["last"] = segment.IsLast.ToString();
-            request.Id = Guid.NewGuid();
-            await logic.PublishDistributeQueueAsync(request);
+            Console.WriteLine($"Error in split text queue: {e.Message}");
+            await logic.EmitTaskRequestErrorAsync(request.Id.ToString());
         }
     }
 
@@ -159,8 +140,6 @@ public sealed class SplitTextQueue(IServiceScopeFactory serviceScopeFactory) : B
 
             currentPosition = endIndex;
             segmentNumber++;
-
-            await Task.Delay(1); // Small delay to avoid thread blocking
         }
     }
 }

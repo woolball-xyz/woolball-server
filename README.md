@@ -105,7 +105,7 @@ Open [http://localhost:9000](http://localhost:9000) to ensure at least one clien
 ```bash
 curl -X POST http://localhost:9002/api/v1/text-generation \
   -F 'input=[{"role":"user","content":"Hello! Can you explain what Woolball is?"}]' \
-  -F "model=https://woolball.sfo3.cdn.digitaloceanspaces.com/gemma3-1b-it-int4.task" \
+  -F "model=https://woolball.sfo3.cdn.digitaloceanspaces.com/gemma3-1b-it-int4-web.task" \
   -F "provider=mediapipe" \
   -F "maxTokens=200"
 ```
@@ -232,7 +232,7 @@ curl -X POST http://localhost:9002/api/v1/text-generation \
 |-------|-------------|-------------|
 | `https://woolball.sfo3.cdn.digitaloceanspaces.com/gemma2-2b-it-cpu-int8.task` | CPU | Gemma2 2B model optimized for CPU inference |
 | `https://woolball.sfo3.cdn.digitaloceanspaces.com/gemma2-2b-it-gpu-int8.bin` | GPU | Gemma2 2B model optimized for GPU inference |
-| `https://woolball.sfo3.cdn.digitaloceanspaces.com/gemma3-1b-it-int4.task` | CPU/GPU | Gemma3 1B model with INT4 quantization |
+| `https://woolball.sfo3.cdn.digitaloceanspaces.com/gemma3-1b-it-int4-web.task` | CPU/GPU | Gemma3 1B model with INT4 quantization |
 | `https://woolball.sfo3.cdn.digitaloceanspaces.com/gemma3-4b-it-int4-web.task` | Web | Gemma3 4B model optimized for web deployment |
 
 #### 💡 Example Usage
@@ -240,7 +240,7 @@ curl -X POST http://localhost:9002/api/v1/text-generation \
 ```bash
 curl -X POST http://localhost:9002/api/v1/text-generation \
   -F 'input=[{"role":"system","content":"You are a helpful assistant."},{"role":"user","content":"Explain quantum computing in simple terms."}]' \
-  -F "model=https://woolball.sfo3.cdn.digitaloceanspaces.com/gemma3-1b-it-int4.task" \
+  -F "model=https://woolball.sfo3.cdn.digitaloceanspaces.com/gemma3-1b-it-int4-web.task" \
   -F "provider=mediapipe" \
   -F "maxTokens=500" \
   -F "temperature=0.7" \

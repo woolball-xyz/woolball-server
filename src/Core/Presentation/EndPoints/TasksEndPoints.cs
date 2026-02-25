@@ -6,6 +6,7 @@ using Domain.Contracts.Task.TextGeneration;
 using Domain.Contracts.Task.SpeechToText;
 using Domain.Contracts.Task.TextToSpeech;
 using Domain.Contracts.Task.Translation;
+using Domain.Contracts.Task.ImageTextToText;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -75,7 +76,6 @@ public static class TasksEndPoints
             .WithName("TextGeneration")
             .WithSummary("Generate text with multiple AI providers")
             .WithDescription("Generate text using Transformers.js, WebLLM, or MediaPipe providers. Specify the provider field to choose which AI provider to use.")
-            .Accepts<TextGenerationRequestContract>("multipart/form-data")
             .Produces<TextGenerationResponse>(200)
             .Produces<object>(400)
             .RequireRateLimiting("fixed")
@@ -84,6 +84,22 @@ public static class TasksEndPoints
                 Summary = "Text Generation - Multi-Provider",
                 Description = "Generate text using multiple AI providers (Transformers.js, WebLLM, MediaPipe). Use the 'provider' field to specify which AI provider to use for text generation.",
                 Tags = new List<OpenApiTag> { new() { Name = "Text Generation" } }
+            });
+
+        // Image-Text-to-Text endpoint
+        group.MapPost("image-text-to-text", HandleImageTextToTextFromForm)
+            .WithName("ImageTextToText")
+            .WithSummary("Describe or answer questions about images")
+            .WithDescription("Multimodal vision: send an image and a text prompt to get a text response. Input is a JSON string with image (base64) and text fields.")
+            .Accepts<ImageTextToTextRequestContract>("multipart/form-data")
+            .Produces<TextGenerationResponse>(200)
+            .Produces<object>(400)
+            .RequireRateLimiting("fixed")
+            .WithOpenApi(operation => new OpenApiOperation(operation)
+            {
+                Summary = "Image-Text-to-Text (Vision)",
+                Description = "Send an image and a text prompt to get a text answer. Input should be a JSON string: {\"image\":\"base64...\",\"text\":\"question\"}.",
+                Tags = new List<OpenApiTag> { new() { Name = "Image-Text-to-Text" } }
             });
 
     }
@@ -121,22 +137,17 @@ public static class TasksEndPoints
         CancellationToken cancellationToken
     )
     {
-        try
-        {
-            await HandleTaskInternalFromForm("text-generation", context, logic, cancellationToken);
-        }
-        catch (Exception e)
-        {
-            Console.WriteLine(e);
-            context.Response.StatusCode = 500;
-            await context.Response.WriteAsync(
-                JsonSerializer.Serialize(new { error = "internal error" }),
-                cancellationToken
-            );
-        }
+        await HandleTaskInternalFromForm("text-generation", context, logic, cancellationToken);
     }
-    
 
+    private static async Task HandleImageTextToTextFromForm(
+        HttpContext context,
+        [FromServices] ITaskBusinessLogic logic,
+        CancellationToken cancellationToken
+    )
+    {
+        await HandleTaskInternalFromForm("image-text-to-text", context, logic, cancellationToken);
+    }
 
     private static async Task HandleTaskInternalFromForm(
         string task,
@@ -147,13 +158,33 @@ public static class TasksEndPoints
     {
         try
         {
-            var request = await TaskRequest.CreateFromForm(context.Request.Form, task);
+            var request = await TaskRequestFactory.CreateFromForm(context.Request.Form, task);
             await ProcessTaskRequest(request, context, logic, cancellationToken);
+        }
+        catch (InvalidOperationException e)
+        {
+            context.Response.StatusCode = 400;
+            context.Response.ContentType = "application/json";
+            await context.Response.WriteAsync(
+                JsonSerializer.Serialize(new { error = e.Message }),
+                cancellationToken
+            );
+        }
+        catch (TimeoutException)
+        {
+            context.Response.StatusCode = 504;
+            context.Response.ContentType = "application/json";
+            await context.Response.WriteAsync(
+                JsonSerializer.Serialize(new { error = "Task processing timed out" }),
+                CancellationToken.None
+            );
         }
         catch (Exception e)
         {
-            Console.WriteLine(e);
+            Console.WriteLine($"Request error: {e.GetType().Name}: {e.Message}");
+            Console.WriteLine(e.StackTrace);
             context.Response.StatusCode = 500;
+            context.Response.ContentType = "application/json";
             await context.Response.WriteAsync(
                 JsonSerializer.Serialize(new { error = "internal error" }),
                 cancellationToken
@@ -209,7 +240,8 @@ public static class TasksEndPoints
 
         if (isStreaming)
         {
-            context.Response.ContentType = "text/plain";
+            context.Response.ContentType = "application/x-ndjson";
+            context.Response.Headers["Cache-Control"] = "no-cache";
 
             await foreach (
                 var message in logic.StreamTaskResultAsync(request, cancellationToken)
@@ -224,28 +256,31 @@ public static class TasksEndPoints
         }
         else
         {
-            var response = await logic.AwaitTaskResultAsync(request);
+            var response = await logic.AwaitTaskResultAsync(request, cancellationToken);
             if (!string.IsNullOrEmpty(response))
             {
-                if (
-                    response.Contains("\"Status\":\"Error\"")
-                    || response.Contains("\"error\":")
-                )
+                bool isError = false;
+                try
                 {
-                    context.Response.StatusCode = 500;
-                    context.Response.ContentType = "application/json";
-                    await context.Response.WriteAsync(response, cancellationToken);
+                    using var doc = JsonDocument.Parse(response);
+                    if (doc.RootElement.ValueKind == JsonValueKind.Object
+                        && doc.RootElement.TryGetProperty("Status", out var statusProp)
+                        && statusProp.ValueKind == JsonValueKind.String)
+                    {
+                        var status = statusProp.GetString();
+                        isError = status == "Error" || status == "failed";
+                    }
                 }
-                else
-                {
-                    context.Response.StatusCode = 200;
-                    context.Response.ContentType = "application/json";
-                    await context.Response.WriteAsync(response, cancellationToken);
-                }
+                catch (JsonException) { }
+
+                context.Response.StatusCode = isError ? 500 : 200;
+                context.Response.ContentType = "application/json";
+                await context.Response.WriteAsync(response, cancellationToken);
             }
             else
             {
-                context.Response.StatusCode = 500;
+                context.Response.StatusCode = 504;
+                context.Response.ContentType = "application/json";
                 await context.Response.WriteAsync(
                     JsonSerializer.Serialize(
                         new { error = "Could not get response from service" }

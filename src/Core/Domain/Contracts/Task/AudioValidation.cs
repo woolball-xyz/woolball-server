@@ -27,7 +27,6 @@ public static class AudioValidation
 
     public static bool IsWav(string extension)
     {
-        Console.WriteLine(extension);
         return extension == ".wav";
     }
 

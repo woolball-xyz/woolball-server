@@ -1,17 +1,12 @@
 namespace Contracts.Constants;
 
-public class BaseModel
-{
-    public required string Model { get; set; }
-    public required string Dtype { get; set; }
-}
-
 public static class AvailableModels
 {
     public static readonly string TextGeneration = "text-generation";
     public static readonly string SpeechToText = "automatic-speech-recognition";
     public static readonly string TextToSpeech = "text-to-speech";
     public static readonly string Translation = "translation";
+    public static readonly string ImageTextToText = "image-text-to-text";
 
     private static readonly List<string> _dict = new List<string>
     {
@@ -19,6 +14,7 @@ public static class AvailableModels
         TextToSpeech,
         Translation,
         TextGeneration,
+        ImageTextToText,
     };
 
     // Dictionary for mapping aliases to official task types
@@ -36,6 +32,8 @@ public static class AvailableModels
         { "tts", TextToSpeech },
         // Aliases for text-generation
         { "completions", TextGeneration },
+        // Aliases for image-text-to-text
+        { "vision", ImageTextToText },
     };
 
     public static string GetTaskName(string task)
@@ -66,22 +64,4 @@ public static class AvailableModels
 
         return false;
     }
-}
-
-public class CompletionModel : BaseModel { }
-
-public class SpeechRecognitionModel : BaseModel
-{
-    public bool OutputLanguage { get; set; }
-    public string ReturnTimestamps { get; set; }
-}
-
-public class TextToSpeechModel : BaseModel
-{
-    public string Voice { get; set; }
-}
-
-public class TranslationModel : BaseModel
-{
-    public List<string> SupportedLanguages { get; set; }
 }

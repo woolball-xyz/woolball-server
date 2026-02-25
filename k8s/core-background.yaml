@@ -1,0 +1,52 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: core-background
+  namespace: woolball
+  labels:
+    app: core-background
+    shared-volume: "true"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: core-background
+  template:
+    metadata:
+      labels:
+        app: core-background
+        shared-volume: "true"
+    spec:
+      affinity:
+        podAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchExpressions:
+                  - key: shared-volume
+                    operator: In
+                    values:
+                      - "true"
+              topologyKey: kubernetes.io/hostname
+      containers:
+        - name: core-background
+          image: ghcr.io/woolball-xyz/server-background:latest
+          env:
+            - name: RedisConnection
+              valueFrom:
+                secretKeyRef:
+                  name: woolball-secrets
+                  key: RedisConnection
+          volumeMounts:
+            - name: shared-data
+              mountPath: /app/shared
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "250m"
+            limits:
+              memory: "512Mi"
+              cpu: "1000m"
+      volumes:
+        - name: shared-data
+          persistentVolumeClaim:
+            claimName: shared-data

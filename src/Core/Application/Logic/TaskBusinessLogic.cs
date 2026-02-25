@@ -1,9 +1,10 @@
-﻿using Domain.Contracts;
+using Domain.Contracts;
+using Infrastructure.Redis;
 using StackExchange.Redis;
 
 namespace Application.Logic;
 
-public sealed class TaskBusinessLogic(IConnectionMultiplexer redis) : ITaskBusinessLogic
+public sealed class TaskBusinessLogic(IConnectionMultiplexer redis, IRedisStreamPublisher streamPublisher) : ITaskBusinessLogic
 {
     public async Task<bool> EmitTaskRequestErrorAsync(string taskRequestId)
     {
@@ -25,7 +26,7 @@ public sealed class TaskBusinessLogic(IConnectionMultiplexer redis) : ITaskBusin
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Error emitting error for task {taskRequestId}: {ex.Message}");
+            Console.WriteLine($"Error emitting error for task: {ex.GetType().Name}");
             return false;
         }
     }
@@ -35,16 +36,15 @@ public sealed class TaskBusinessLogic(IConnectionMultiplexer redis) : ITaskBusin
         try
         {
             Console.WriteLine("Publishing preprocessing queue...");
-            var subscriber = redis.GetSubscriber();
-            var queueName = RedisChannel.Literal("preprocessing_queue");
-            await subscriber.PublishAsync(
-                queueName,
+            await streamPublisher.PublishAsync(
+                StreamNames.PreProcessing,
                 System.Text.Json.JsonSerializer.Serialize(taskRequest)
             );
             return true;
         }
         catch (Exception ex)
         {
+            Console.WriteLine($"[TaskBusinessLogic] Error publishing to preprocessing queue: {ex.GetType().Name}: {ex.Message}");
             return false;
         }
     }
@@ -53,16 +53,15 @@ public sealed class TaskBusinessLogic(IConnectionMultiplexer redis) : ITaskBusin
     {
         try
         {
-            var subscriber = redis.GetSubscriber();
-            var queueName = RedisChannel.Literal("split_audio_by_silence_queue");
-            await subscriber.PublishAsync(
-                queueName,
+            await streamPublisher.PublishAsync(
+                StreamNames.SplitAudioBySilence,
                 System.Text.Json.JsonSerializer.Serialize(taskRequest)
             );
             return true;
         }
         catch (Exception ex)
         {
+            Console.WriteLine($"[TaskBusinessLogic] Error publishing to split audio queue: {ex.GetType().Name}: {ex.Message}");
             return false;
         }
     }
@@ -71,17 +70,15 @@ public sealed class TaskBusinessLogic(IConnectionMultiplexer redis) : ITaskBusin
     {
         try
         {
-            var subscriber = redis.GetSubscriber();
-            var queueName = RedisChannel.Literal("split_text_queue");
-            await subscriber.PublishAsync(
-                queueName,
+            await streamPublisher.PublishAsync(
+                StreamNames.SplitText,
                 System.Text.Json.JsonSerializer.Serialize(taskRequest)
             );
             return true;
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Error publishing to text split queue: {ex.Message}");
+            Console.WriteLine($"Error publishing to text split queue: {ex.GetType().Name}");
             return false;
         }
     }
@@ -90,44 +87,48 @@ public sealed class TaskBusinessLogic(IConnectionMultiplexer redis) : ITaskBusin
     {
         try
         {
-            var subscriber = redis.GetSubscriber();
-            var queueName = RedisChannel.Literal("distribute_queue");
-            await subscriber.PublishAsync(
-                queueName,
+            await streamPublisher.PublishAsync(
+                StreamNames.Distribute,
                 System.Text.Json.JsonSerializer.Serialize(taskRequest)
             );
             return true;
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Error publishing to distribution queue: {ex.Message}");
+            Console.WriteLine($"Error publishing to distribution queue: {ex.GetType().Name}");
             return false;
         }
     }
 
-    public async Task<string> AwaitTaskResultAsync(TaskRequest taskRequest)
+    public async Task<string> AwaitTaskResultAsync(TaskRequest taskRequest, CancellationToken cancellationToken = default)
     {
+        // 3-minute safety-net timeout (> 2-minute session tracking timeout)
+        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeoutCts.CancelAfter(TimeSpan.FromMinutes(3));
+
+        var subscriber = redis.GetSubscriber();
+        var queueName = $"result_queue_{taskRequest.Id}";
+
+        var channel = await subscriber.SubscribeAsync(RedisChannel.Literal(queueName));
+
         try
         {
-            var subscriber = redis.GetSubscriber();
-            var queueName = $"result_queue_{taskRequest.Id}";
-
-            var channel = await subscriber.SubscribeAsync(RedisChannel.Literal(queueName));
-
-            Console.WriteLine($"[AwaitTaskResultAsync] listening: {queueName}");
-            var result = await channel.ReadAsync();
-            Console.WriteLine($"[AwaitTaskResultAsync] Message received: {result.Message}");
-            await channel.UnsubscribeAsync();
+            var result = await channel.ReadAsync(timeoutCts.Token);
             return result.Message.ToString();
         }
-        catch (Exception ex)
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
-            throw new Exception($"Error waiting for task result: {ex.Message}");
+            throw new TimeoutException($"Task {taskRequest.Id} timed out waiting for result");
+        }
+        finally
+        {
+            await channel.UnsubscribeAsync();
         }
     }
 
     public async IAsyncEnumerable<string> StreamTaskResultAsync(
         TaskRequest taskRequest,
+        [System.Runtime.CompilerServices.EnumeratorCancellation]
         CancellationToken cancellationToken = default
     )
     {
@@ -136,29 +137,31 @@ public sealed class TaskBusinessLogic(IConnectionMultiplexer redis) : ITaskBusin
 
         var channel = await subscriber.SubscribeAsync(RedisChannel.Literal(queueName));
 
-        Console.WriteLine($"[StreamTaskResultAsync] listening: {queueName}");
-        while (!cancellationToken.IsCancellationRequested)
+        try
         {
-            var message = await channel.ReadAsync(cancellationToken);
-            if (message.Message.IsNullOrEmpty)
-                continue;
-
-            string messageText = message.Message.ToString();
-            Console.WriteLine($"[StreamTaskResultAsync] Message received: {messageText}");
-
-            if (
-                messageText.Contains("\"Status\":\"Completed\"", StringComparison.OrdinalIgnoreCase)
-            )
+            while (!cancellationToken.IsCancellationRequested)
             {
-                Console.WriteLine(
-                    $"[StreamTaskResultAsync] Detected completion message, breaking stream"
-                );
-                break;
+                var message = await channel.ReadAsync(cancellationToken);
+                if (message.Message.IsNullOrEmpty)
+                    continue;
+
+                string messageText = message.Message.ToString();
+
+                if (messageText.Contains("\"Status\":\"Completed\"", StringComparison.OrdinalIgnoreCase))
+                    break;
+
+                if (messageText.Contains("\"Status\":\"Error\"", StringComparison.OrdinalIgnoreCase))
+                {
+                    yield return messageText;
+                    break;
+                }
+
+                yield return messageText;
             }
-
-            yield return messageText;
         }
-
-        await channel.UnsubscribeAsync();
+        finally
+        {
+            await channel.UnsubscribeAsync();
+        }
     }
 }

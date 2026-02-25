@@ -1,0 +1,66 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: core-api
+  namespace: woolball
+  labels:
+    app: core-api
+    shared-volume: "true"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: core-api
+  template:
+    metadata:
+      labels:
+        app: core-api
+        shared-volume: "true"
+    spec:
+      affinity:
+        podAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchExpressions:
+                  - key: shared-volume
+                    operator: In
+                    values:
+                      - "true"
+              topologyKey: kubernetes.io/hostname
+      containers:
+        - name: core-api
+          image: ghcr.io/woolball-xyz/server-webapi:latest
+          ports:
+            - containerPort: 8080
+          env:
+            - name: RedisConnection
+              valueFrom:
+                secretKeyRef:
+                  name: woolball-secrets
+                  key: RedisConnection
+          volumeMounts:
+            - name: shared-data
+              mountPath: /app/shared
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "100m"
+            limits:
+              memory: "256Mi"
+              cpu: "500m"
+      volumes:
+        - name: shared-data
+          persistentVolumeClaim:
+            claimName: shared-data
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: core-api
+  namespace: woolball
+spec:
+  selector:
+    app: core-api
+  ports:
+    - port: 8080
+      targetPort: 8080

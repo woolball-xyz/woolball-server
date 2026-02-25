@@ -3,6 +3,7 @@ using System.Text;
 using System.Text.Json;
 using Application.Logic;
 using Domain.Contracts;
+using Infrastructure.Redis;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -14,18 +15,22 @@ namespace Presentation.Websockets;
 
 public static class TaskSockets
 {
+    private const int MaxMessageSize = 10 * 1024 * 1024; // 10 MB per message
+
     public static void AddTaskSockets(this IEndpointRouteBuilder app)
     {
         var group = app.MapGroup("ws/");
 
         group.WithOpenApi();
 
-        group.Map("{id}", ReceiveAsync);
+        group.Map("{id}", ReceiveAsync)
+            .RequireRateLimiting("ws-fixed");
     }
 
     public static async Task ReceiveAsync(
         HttpContext context,
         IConnectionMultiplexer redis,
+        IRedisStreamPublisher streamPublisher,
         WebSocketNodesQueue webSocketNodesQueue,
         CancellationToken cancellationToken,
         string id
@@ -48,44 +53,48 @@ public static class TaskSockets
         var buffer = new byte[1024 * 4];
         WebSocketReceiveResult result;
 
-        var publisher = redis.GetSubscriber();
-
-        // Simplified ping mechanism
-        _ = Task.Run(async () =>
+        using var pingCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        var pingTask = Task.Run(async () =>
         {
-            while (webSocket.State == WebSocketState.Open)
+            using var timer = new PeriodicTimer(TimeSpan.FromSeconds(30));
+            try
             {
-                try
+                while (await timer.WaitForNextTickAsync(pingCts.Token))
                 {
-                    var pingMessage = new ArraySegment<byte>(Encoding.UTF8.GetBytes("ping"));
+                    if (webSocket.State != WebSocketState.Open) break;
                     await webSocket.SendAsync(
-                        pingMessage,
-                        WebSocketMessageType.Text,
-                        true,
-                        CancellationToken.None
-                    );
-                    await Task.Delay(TimeSpan.FromSeconds(30));
-                }
-                catch
-                {
-                    // Ignore
+                        new ArraySegment<byte>(Encoding.UTF8.GetBytes("ping")),
+                        WebSocketMessageType.Text, true, pingCts.Token);
                 }
             }
-        });
+            catch (OperationCanceledException) { }
+        }, pingCts.Token);
 
         try
         {
             do
             {
-                string data = string.Empty;
+                var sb = new StringBuilder();
                 do
                 {
                     result = await webSocket.ReceiveAsync(
                         new ArraySegment<byte>(buffer),
                         cancellationToken
                     );
-                    data += Encoding.UTF8.GetString(buffer, 0, result.Count);
+                    sb.Append(Encoding.UTF8.GetString(buffer, 0, result.Count));
+
+                    if (sb.Length > MaxMessageSize)
+                    {
+                        await webSocket.CloseAsync(
+                            WebSocketCloseStatus.MessageTooBig,
+                            "Message exceeds maximum allowed size",
+                            cancellationToken
+                        );
+                        return;
+                    }
                 } while (!result.EndOfMessage);
+
+                var data = sb.ToString();
 
                 if (!string.IsNullOrEmpty(data))
                 {
@@ -102,16 +111,15 @@ public static class TaskSockets
                             Data = responseBody?.Data ?? new TaskResponseData<object>(),
                         };
 
-                        await publisher.PublishAsync(
-                            RedisChannel.Literal("post_processing_queue"),
+                        await streamPublisher.PublishAsync(
+                            StreamNames.PostProcessing,
                             JsonSerializer.Serialize(response)
                         );
                     }
                     catch (Exception ex)
                     {
-                        // should redistribute
                         Console.WriteLine(
-                            $"[ReceiveAsync] Error processing task response: {ex.Message}"
+                            $"[ReceiveAsync] Error processing task response: {ex.GetType().Name}"
                         );
                     }
                 }
@@ -149,6 +157,8 @@ public static class TaskSockets
         }
         finally
         {
+            pingCts.Cancel();
+            try { await pingTask; } catch (OperationCanceledException) { }
             await webSocketNodesQueue.RemoveConnectionAsync(connectionId);
         }
     }

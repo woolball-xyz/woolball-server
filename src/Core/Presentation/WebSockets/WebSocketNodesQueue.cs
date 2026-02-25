@@ -10,7 +10,14 @@ namespace Presentation.Websockets;
 
 public class WebSocketNodesQueue
 {
-    private Channel<(string, WebSocket)> _queue = Channel.CreateUnbounded<(string, WebSocket)>();
+    private readonly Channel<(string, WebSocket)> _queue = Channel.CreateBounded<(string, WebSocket)>(
+        new BoundedChannelOptions(1000)
+        {
+            FullMode = BoundedChannelFullMode.Wait,
+            SingleReader = true,
+            SingleWriter = false
+        }
+    );
     private readonly ConcurrentDictionary<string, WebSocket> _activeConnections = new();
     private int _connectionCount = 0;
     private readonly SemaphoreSlim _broadcastSemaphore = new(1, 1);
@@ -20,22 +27,19 @@ public class WebSocketNodesQueue
         await _queue.Writer.WriteAsync((nodeId, socket));
     }
 
-    public async Task<(string?, WebSocket?)> GetAvailableWebsocketAsync()
+    public async Task<(string?, WebSocket?)> GetAvailableWebsocketAsync(CancellationToken ct = default)
     {
-        while (await _queue.Reader.WaitToReadAsync())
+        while (await _queue.Reader.WaitToReadAsync(ct))
         {
             while (_queue.Reader.TryRead(out var item))
             {
-                var (groupName, webSocket) = item;
-
-                if (webSocket?.State == WebSocketState.Open)
+                if (item.Item2?.State == WebSocketState.Open)
                 {
                     return item;
                 }
             }
         }
 
-        // If we get here, the channel is empty and no available WebSocket was found
         return (null, null);
     }
 
@@ -91,8 +95,9 @@ public class WebSocketNodesQueue
                         disconnectedConnections.Add(kvp.Key);
                     }
                 }
-                catch
+                catch (Exception ex)
                 {
+                    Console.WriteLine($"[WebSocketNodesQueue] Error broadcasting to {kvp.Key}: {ex.GetType().Name}");
                     disconnectedConnections.Add(kvp.Key);
                 }
             }
@@ -131,9 +136,9 @@ public class WebSocketNodesQueue
                                 );
                             }
                         }
-                        catch
+                        catch (Exception ex)
                         {
-                            // Ignore send errors during cleanup broadcast
+                            Console.WriteLine($"[WebSocketNodesQueue] Cleanup broadcast error for {kvp.Key}: {ex.GetType().Name}");
                         }
                     }
                 }

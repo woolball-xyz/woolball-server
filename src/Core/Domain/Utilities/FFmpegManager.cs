@@ -388,7 +388,10 @@ namespace Domain.Utilities
                     {
                         File.Delete(outputFilePath);
                     }
-                    catch { }
+                    catch (IOException ioEx)
+                    {
+                        Console.WriteLine($"[FFmpegManager] Failed to clean up temp file {outputFilePath}: {ioEx.Message}");
+                    }
                 }
 
                 throw new Exception($"Failed to convert file to WAV: {ex.Message}", ex);
