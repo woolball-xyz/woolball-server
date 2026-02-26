@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Application.Logic;
 using Contracts.Constants;
+using Domain.Utilities;
 using Infrastructure.Redis;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -45,11 +46,14 @@ public sealed class PreProcessingQueue(
             if (taskRequest == null)
                 return;
 
+            PrivateArgsHelper.SetTimestamp(taskRequest.PrivateArgs, "preprocessing_start");
+
             // Route tasks based on their type
             switch (taskRequest.Task)
             {
                 case var task when task == AvailableModels.SpeechToText:
                     // Audio files need to be split by silence
+                    PrivateArgsHelper.SetTimestamp(taskRequest.PrivateArgs, "preprocessing_end");
                     await logic.PublishSplitAudioBySilenceQueueAsync(taskRequest);
                     break;
 
@@ -58,6 +62,7 @@ public sealed class PreProcessingQueue(
                     if (EnsureValidTextToSpeechInput(taskRequest))
                     {
                         // Text needs to be split for TTS processing
+                        PrivateArgsHelper.SetTimestamp(taskRequest.PrivateArgs, "preprocessing_end");
                         await logic.PublishSplitTextQueueAsync(taskRequest);
                     }
                     else
@@ -77,6 +82,7 @@ public sealed class PreProcessingQueue(
                         || task == AvailableModels.TextGeneration
                         || task == AvailableModels.ImageTextToText:
                     // These tasks don't need preprocessing, send directly to distribution
+                    PrivateArgsHelper.SetTimestamp(taskRequest.PrivateArgs, "preprocessing_end");
                     await logic.PublishDistributeQueueAsync(taskRequest);
                     break;
 

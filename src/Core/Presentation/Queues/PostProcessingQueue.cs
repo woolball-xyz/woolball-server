@@ -91,9 +91,33 @@ public sealed class PostProcessingQueue(
             }
             taskId = taskRequest.Id.ToString();
 
+            // Copy the response-received timestamp from the WS service
+            if (taskResponse.ReceivedAtMs > 0)
+            {
+                taskRequest.PrivateArgs["ts_response_received"] = taskResponse.ReceivedAtMs;
+            }
+
+            PrivateArgsHelper.SetTimestamp(taskRequest.PrivateArgs, "postprocessing_start");
+
             try
             {
                 await ProcessTaskResponseAsync(taskResponse, taskRequest);
+
+                PrivateArgsHelper.SetTimestamp(taskRequest.PrivateArgs, "postprocessing_end");
+
+                // Store metrics in Redis if verbose was requested
+                if (taskRequest.PrivateArgs.ContainsKey("verbose"))
+                {
+                    var metricsKey = taskRequest.PrivateArgs.ContainsKey("parent")
+                        ? $"metrics:{PrivateArgsHelper.GetString(taskRequest.PrivateArgs, "parent")}"
+                        : $"metrics:{taskRequest.Id}";
+
+                    var metrics = TaskMetricsBuilder.Build(taskRequest, taskResponse.NodeId);
+                    await db.StringSetAsync(
+                        metricsKey,
+                        JsonSerializer.Serialize(metrics),
+                        TimeSpan.FromMinutes(5));
+                }
 
                 var completionId = taskRequest.Id;
                 var completionData = JsonSerializer.Serialize(

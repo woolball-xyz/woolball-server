@@ -7,11 +7,14 @@ using Domain.Contracts.Task.SpeechToText;
 using Domain.Contracts.Task.TextToSpeech;
 using Domain.Contracts.Task.Translation;
 using Domain.Contracts.Task.ImageTextToText;
+using Domain.Utilities;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.OpenApi.Models;
+using StackExchange.Redis;
 
 namespace Presentation.EndPoints;
 
@@ -159,6 +162,19 @@ public static class TasksEndPoints
         try
         {
             var request = await TaskRequestFactory.CreateFromForm(context.Request.Form, task);
+
+            if (request != null)
+            {
+                PrivateArgsHelper.SetTimestamp(request.PrivateArgs, "request_received");
+
+                var verbose = string.Equals(
+                    context.Request.Headers["X-Verbose"].FirstOrDefault(),
+                    "true",
+                    StringComparison.OrdinalIgnoreCase);
+                if (verbose)
+                    request.PrivateArgs["verbose"] = true;
+            }
+
             await ProcessTaskRequest(request, context, logic, cancellationToken);
         }
         catch (InvalidOperationException e)
@@ -275,6 +291,14 @@ public static class TasksEndPoints
 
                 context.Response.StatusCode = isError ? 500 : 200;
                 context.Response.ContentType = "application/json";
+
+                // If verbose requested, attach pipeline metrics
+                bool verbose = request.PrivateArgs.ContainsKey("verbose");
+                if (verbose && !isError)
+                {
+                    response = await AttachMetricsAsync(context, request, response);
+                }
+
                 await context.Response.WriteAsync(response, cancellationToken);
             }
             else
@@ -288,6 +312,43 @@ public static class TasksEndPoints
                     cancellationToken
                 );
             }
+        }
+    }
+
+    private static async Task<string> AttachMetricsAsync(
+        HttpContext context,
+        TaskRequest request,
+        string response)
+    {
+        try
+        {
+            var redis = context.RequestServices.GetRequiredService<IConnectionMultiplexer>();
+            var db = redis.GetDatabase();
+            var metricsJson = await db.StringGetAsync($"metrics:{request.Id}");
+
+            if (!metricsJson.HasValue)
+                return response;
+
+            var metrics = JsonSerializer.Deserialize<TaskMetrics>(metricsJson.ToString());
+            if (metrics == null)
+                return response;
+
+            // Clean up the metrics key
+            await db.KeyDeleteAsync($"metrics:{request.Id}");
+
+            // Parse original response and wrap with metrics
+            using var doc = JsonDocument.Parse(response);
+            var wrapped = new Dictionary<string, object>
+            {
+                ["result"] = doc.RootElement,
+                ["metrics"] = metrics
+            };
+
+            return JsonSerializer.Serialize(wrapped);
+        }
+        catch
+        {
+            return response;
         }
     }
 }

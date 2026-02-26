@@ -144,6 +144,7 @@ public static class TaskSockets
                         {
                             NodeId = id,
                             Data = responseBody?.Data ?? new TaskResponseData<object>(),
+                            ReceivedAtMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
                         };
 
                         await streamPublisher.PublishAsync(
