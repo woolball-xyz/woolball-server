@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.RateLimiting;
 using Presentation;
 using WebApi;
 using WebApi.Filters;
+using WebApi.Middleware;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -111,6 +112,8 @@ builder.Services
 var app = builder.Build();
 
 app.UseCors("CorsPolicy");
+
+app.UseApiKeyAuth();
 
 app.UseRateLimiter();
 

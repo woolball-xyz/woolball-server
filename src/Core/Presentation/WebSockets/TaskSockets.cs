@@ -17,6 +17,26 @@ public static class TaskSockets
 {
     private const int MaxMessageSize = 10 * 1024 * 1024; // 10 MB per message
 
+    private static readonly bool WsAuthEnabled;
+    private static readonly string? WsApiKey;
+
+    static TaskSockets()
+    {
+        var mode = Environment.GetEnvironmentVariable("AUTH_WS_MODE") ?? "none";
+        WsAuthEnabled = string.Equals(mode, "api-key-env", StringComparison.OrdinalIgnoreCase);
+
+        if (WsAuthEnabled)
+        {
+            WsApiKey = Environment.GetEnvironmentVariable("WS_API_KEY");
+            if (string.IsNullOrEmpty(WsApiKey))
+            {
+                Console.WriteLine(
+                    "[Auth] WARNING: AUTH_WS_MODE=api-key-env but WS_API_KEY is not set. " +
+                    "All WebSocket connections will be rejected with 4001.");
+            }
+        }
+    }
+
     public static void AddTaskSockets(this IEndpointRouteBuilder app)
     {
         var group = app.MapGroup("ws/");
@@ -43,6 +63,21 @@ public static class TaskSockets
                 JsonSerializer.Serialize(new { error = "Invalid ID." })
             );
             return;
+        }
+
+        // Validate token BEFORE accepting the WebSocket connection
+        if (WsAuthEnabled)
+        {
+            var token = context.Request.Query["token"].FirstOrDefault();
+            if (string.IsNullOrEmpty(token) ||
+                string.IsNullOrEmpty(WsApiKey) ||
+                !string.Equals(token, WsApiKey, StringComparison.Ordinal))
+            {
+                context.Response.StatusCode = 401;
+                await context.Response.WriteAsync(
+                    JsonSerializer.Serialize(new { error = "Unauthorized" }));
+                return;
+            }
         }
 
         var webSocket = await context.WebSockets.AcceptWebSocketAsync();
