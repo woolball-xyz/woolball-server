@@ -10,7 +10,7 @@ namespace Presentation.Websockets;
 
 public class WebSocketNodesQueue
 {
-    private readonly Channel<(string, WebSocket)> _queue = Channel.CreateBounded<(string, WebSocket)>(
+    private readonly Channel<(string, WebSocket, string?)> _queue = Channel.CreateBounded<(string, WebSocket, string?)>(
         new BoundedChannelOptions(1000)
         {
             FullMode = BoundedChannelFullMode.Wait,
@@ -22,12 +22,12 @@ public class WebSocketNodesQueue
     private int _connectionCount = 0;
     private readonly SemaphoreSlim _broadcastSemaphore = new(1, 1);
 
-    public async Task AddWebsocketInQueueAsync(string nodeId, WebSocket socket)
+    public async Task AddWebsocketInQueueAsync(string nodeId, WebSocket socket, string? operatorId = null)
     {
-        await _queue.Writer.WriteAsync((nodeId, socket));
+        await _queue.Writer.WriteAsync((nodeId, socket, operatorId));
     }
 
-    public async Task<(string?, WebSocket?)> GetAvailableWebsocketAsync(CancellationToken ct = default)
+    public async Task<(string?, WebSocket?, string?)> GetAvailableWebsocketAsync(CancellationToken ct = default)
     {
         while (await _queue.Reader.WaitToReadAsync(ct))
         {
@@ -40,7 +40,7 @@ public class WebSocketNodesQueue
             }
         }
 
-        return (null, null);
+        return (null, null, null);
     }
 
     public async Task<string> AddConnectionAsync(string nodeId, WebSocket socket)

@@ -12,6 +12,7 @@ public sealed class TaskResponse
 {
     public string NodeId { get; set; }
     public TaskResponseData<object> Data { get; set; }
+    public long ReceivedAtMs { get; set; }
 }
 
 public sealed class TaskResponseData<T>

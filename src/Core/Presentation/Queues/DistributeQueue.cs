@@ -1,6 +1,7 @@
 using System.Net.WebSockets;
 using System.Text;
 using System.Text.Json;
+using Domain.Utilities;
 using Infrastructure.Redis;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -57,14 +58,17 @@ public sealed class DistributeQueue : BackgroundService
             var taskRequest = JsonSerializer.Deserialize<TaskRequest>(message);
             if (taskRequest != null)
             {
+                PrivateArgsHelper.SetTimestamp(taskRequest.PrivateArgs, "distribute_start");
+
                 using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
                 timeoutCts.CancelAfter(TimeSpan.FromSeconds(30));
 
-                string id;
-                System.Net.WebSockets.WebSocket webSocket;
+                string? id;
+                System.Net.WebSockets.WebSocket? webSocket;
+                string? operatorId;
                 try
                 {
-                    (id, webSocket) = await _webSocketNodesQueue.GetAvailableWebsocketAsync(timeoutCts.Token);
+                    (id, webSocket, operatorId) = await _webSocketNodesQueue.GetAvailableWebsocketAsync(timeoutCts.Token);
                 }
                 catch (OperationCanceledException) when (!stoppingToken.IsCancellationRequested)
                 {
@@ -76,11 +80,18 @@ public sealed class DistributeQueue : BackgroundService
                     throw new Exception("No available nodes");
                 }
 
+                PrivateArgsHelper.SetTimestamp(taskRequest.PrivateArgs, "node_acquired");
                 taskRequest.PrivateArgs["node_id"] = id.ToString();
+                if (operatorId != null)
+                {
+                    taskRequest.PrivateArgs["operator_id"] = operatorId;
+                }
 
                 var db = _redis.GetDatabase();
 
-                await db.StringSetAsync($"task:{taskRequest.Id}", message, TimeSpan.FromMinutes(10));
+                // Store the task with updated timestamps in Redis
+                var taskJson = JsonSerializer.Serialize(taskRequest);
+                await db.StringSetAsync($"task:{taskRequest.Id}", taskJson, TimeSpan.FromMinutes(10));
 
                 await taskRequest.LoadInputIfNeeded();
 
@@ -101,6 +112,13 @@ public sealed class DistributeQueue : BackgroundService
                     true,
                     stoppingToken
                 );
+
+                PrivateArgsHelper.SetTimestamp(taskRequest.PrivateArgs, "sent_to_node");
+                // Update Redis with the sent_to_node timestamp
+                await db.StringSetAsync(
+                    $"task:{taskRequest.Id}",
+                    JsonSerializer.Serialize(taskRequest),
+                    TimeSpan.FromMinutes(10));
 
                 await _publisher.PublishAsync(StreamNames.SessionTracking, taskRequest.Id.ToString());
             }
