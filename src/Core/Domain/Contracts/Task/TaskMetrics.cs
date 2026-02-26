@@ -39,4 +39,7 @@ public sealed class NodeContribution
 
     [JsonPropertyName("inference_ms")]
     public long InferenceMs { get; set; }
+
+    [JsonPropertyName("operator_id")]
+    public string? OperatorId { get; set; }
 }

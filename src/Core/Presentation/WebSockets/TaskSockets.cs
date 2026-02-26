@@ -80,9 +80,11 @@ public static class TaskSockets
             }
         }
 
+        var operatorId = context.Request.Query["operator"].FirstOrDefault();
+
         var webSocket = await context.WebSockets.AcceptWebSocketAsync();
 
-        await webSocketNodesQueue.AddWebsocketInQueueAsync(id, webSocket);
+        await webSocketNodesQueue.AddWebsocketInQueueAsync(id, webSocket, operatorId);
         var connectionId = await webSocketNodesQueue.AddConnectionAsync(id, webSocket);
 
         var buffer = new byte[1024 * 4];
@@ -160,7 +162,7 @@ public static class TaskSockets
                     }
                 }
 
-                await webSocketNodesQueue.AddWebsocketInQueueAsync(id, webSocket);
+                await webSocketNodesQueue.AddWebsocketInQueueAsync(id, webSocket, operatorId);
             } while (!result.CloseStatus.HasValue);
 
             await webSocket.CloseAsync(

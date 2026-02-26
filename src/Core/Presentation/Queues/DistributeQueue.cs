@@ -63,11 +63,12 @@ public sealed class DistributeQueue : BackgroundService
                 using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
                 timeoutCts.CancelAfter(TimeSpan.FromSeconds(30));
 
-                string id;
-                System.Net.WebSockets.WebSocket webSocket;
+                string? id;
+                System.Net.WebSockets.WebSocket? webSocket;
+                string? operatorId;
                 try
                 {
-                    (id, webSocket) = await _webSocketNodesQueue.GetAvailableWebsocketAsync(timeoutCts.Token);
+                    (id, webSocket, operatorId) = await _webSocketNodesQueue.GetAvailableWebsocketAsync(timeoutCts.Token);
                 }
                 catch (OperationCanceledException) when (!stoppingToken.IsCancellationRequested)
                 {
@@ -81,6 +82,10 @@ public sealed class DistributeQueue : BackgroundService
 
                 PrivateArgsHelper.SetTimestamp(taskRequest.PrivateArgs, "node_acquired");
                 taskRequest.PrivateArgs["node_id"] = id.ToString();
+                if (operatorId != null)
+                {
+                    taskRequest.PrivateArgs["operator_id"] = operatorId;
+                }
 
                 var db = _redis.GetDatabase();
 

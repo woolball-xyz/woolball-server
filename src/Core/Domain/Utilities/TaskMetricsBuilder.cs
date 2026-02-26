@@ -15,6 +15,7 @@ public static class TaskMetricsBuilder
         var nodeAcquired = PrivateArgsHelper.GetTimestamp(args, "node_acquired");
         var sentToNode = PrivateArgsHelper.GetTimestamp(args, "sent_to_node");
         var responseReceived = PrivateArgsHelper.GetLong(args, "ts_response_received");
+        var operatorId = PrivateArgsHelper.GetString(args, "operator_id");
         var postprocessingStart = PrivateArgsHelper.GetTimestamp(args, "postprocessing_start");
         var postprocessingEnd = PrivateArgsHelper.GetTimestamp(args, "postprocessing_end");
 
@@ -46,6 +47,7 @@ public static class TaskMetricsBuilder
                 {
                     NodeId = nodeId ?? PrivateArgsHelper.GetString(args, "node_id"),
                     InferenceMs = inferenceMs,
+                    OperatorId = operatorId,
                 }
             }
         };

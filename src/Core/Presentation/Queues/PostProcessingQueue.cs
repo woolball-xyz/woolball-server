@@ -101,11 +101,11 @@ public sealed class PostProcessingQueue(
 
             try
             {
-                await ProcessTaskResponseAsync(taskResponse, taskRequest);
-
+                // Store metrics BEFORE publishing result to avoid race condition:
+                // the HTTP handler reads metrics from Redis immediately after receiving
+                // the result from result_queue, so metrics must be written first.
                 PrivateArgsHelper.SetTimestamp(taskRequest.PrivateArgs, "postprocessing_end");
 
-                // Store metrics in Redis if verbose was requested
                 if (taskRequest.PrivateArgs.ContainsKey("verbose"))
                 {
                     var metricsKey = taskRequest.PrivateArgs.ContainsKey("parent")
@@ -118,6 +118,8 @@ public sealed class PostProcessingQueue(
                         JsonSerializer.Serialize(metrics),
                         TimeSpan.FromMinutes(5));
                 }
+
+                await ProcessTaskResponseAsync(taskResponse, taskRequest);
 
                 var completionId = taskRequest.Id;
                 var completionData = JsonSerializer.Serialize(
